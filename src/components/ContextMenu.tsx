@@ -8,6 +8,7 @@ import {
   openEntry,
   openFolderDialog,
   path,
+  requestTrashFolder,
   revealSelection,
   selectedEntries,
   settings,
@@ -107,6 +108,12 @@ export function selectionMenuItems(): MenuItem[] {
   // EDIT-06: actions that change files only in edit mode.
   if (editMode() && sel.some((e) => !e.d)) {
     items.push({ separator: true, label: "" }, { label: "Move to Trash", shortcut: "⌘⌫", danger: true, action: trashSelection });
+  }
+  if (editMode() && one?.d && onePath) {
+    items.push(
+      { separator: true, label: "" },
+      { label: "Move Folder to Trash…", danger: true, action: () => requestTrashFolder(onePath) },
+    );
   }
   return items;
 }

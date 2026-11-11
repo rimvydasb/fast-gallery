@@ -30,6 +30,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { InfoPanel } from "./components/InfoPanel";
 import { ContextMenu } from "./components/ContextMenu";
+import { DeleteFolderDialog } from "./components/DeleteFolderDialog";
 import { Toasts } from "./components/Toasts";
 import { GridView } from "./views/GridView";
 import { ViewerView } from "./views/ViewerView";
@@ -128,6 +129,7 @@ export function App() {
         </div>
       </Show>
       <ContextMenu />
+      <DeleteFolderDialog />
       <Toasts />
     </div>
   );

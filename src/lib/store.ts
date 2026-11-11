@@ -426,3 +426,30 @@ export async function toggleFavorite(p: string) {
   setSettings(s);
   toast(s.favorites.includes(p) ? `Added “${baseName(p)}” to Favorites.` : `Removed “${baseName(p)}” from Favorites.`, "info");
 }
+
+// ---------- Delete folder (edit mode) ----------
+
+/** The folder that waits for a delete confirmation, or null. */
+export const [folderToDelete, setFolderToDelete] = createSignal<string | null>(null);
+
+/** Asks for a confirmation before a folder moves to the Trash. Requires edit mode. */
+export function requestTrashFolder(folderPath: string) {
+  if (!editMode()) {
+    toast("Turn on edit mode (⌘E) to move folders to the Trash.", "info");
+    return;
+  }
+  setFolderToDelete(folderPath);
+}
+
+/** Moves the whole folder to the Trash (undo with ⌘Z) and refreshes the listing. */
+export async function trashFolder(folderPath: string) {
+  setFolderToDelete(null);
+  const done = await trashPaths([folderPath]);
+  if (done.length === 0) return;
+  const name = baseName(folderPath);
+  const remaining = entries().filter((e) => !(e.d && e.n === name));
+  batch(() => {
+    setEntries(remaining);
+    clearSelection();
+  });
+}
