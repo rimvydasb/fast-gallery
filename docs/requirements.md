@@ -22,6 +22,23 @@ Each requirement has an ID and a checkbox. Mark the checkbox `- [x]` after the r
 
 The keywords `MUST`, `MUST NOT`, `SHOULD`, and `MAY` have the meaning from RFC 2119.
 
+## Project Priorities
+
+Performance is the highest priority of the project.
+The priorities apply in this order to each design and implementation decision.
+
+| Rank | Priority          | Measured by                                      |
+|------|-------------------|--------------------------------------------------|
+| 1    | Performance       | PERF-02, PERF-05 to PERF-10                      |
+| 2    | Small footprint   | PERF-01, PERF-03, PERF-04                        |
+| 3    | Feature scope     | All other requirements                           |
+
+- [ ] **PRIO-01** A change MUST NOT make a performance budget fail.
+- [ ] **PRIO-02** A feature that conflicts with a performance budget MUST be optional, or it MUST
+  move to Future Improvements.
+- [ ] **PRIO-03** The implementation MUST select the fastest option among options that meet all MUST requirements.
+- [ ] **PRIO-04** Each change to scan, decode, cache, or grid code MUST include a benchmark result or a profile.
+
 ## Technical Breakdown
 
 ### Structural Diagram
