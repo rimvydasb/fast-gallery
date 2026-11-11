@@ -16,6 +16,8 @@ The app has 2 main views:
 - **Grid view:** shows the folders and images of one directory as tiles.
 - **Viewer:** shows one image at full size, with keyboard navigation to the previous and next image.
 
+An edit mode controls file changes. While edit mode is on, the user can move images to the macOS Trash.
+
 Each requirement has an ID and a checkbox. Mark the checkbox `- [x]` after the requirement is implemented and verified.
 
 The keywords `MUST`, `MUST NOT`, `SHOULD`, and `MAY` have the meaning from RFC 2119.
@@ -43,6 +45,7 @@ flowchart LR
         ThumbnailService
         ImageDecoder
         FsWatcher
+        EditModeState
     end
     ThumbCache[(ThumbCache)]
     PreviewIndex[(PreviewIndex)]
@@ -63,6 +66,7 @@ flowchart LR
     ImageProtocol -->|decode if format not native| ImageDecoder
     DirScanner -.->|DirEntry list| FileSystem
     FsWatcher -.->|change events| Commands
+    Commands -->|check before trash_files| EditModeState
     FsWatcher -->|invalidate| PreviewIndex
 ```
 
@@ -76,7 +80,7 @@ fast-gallery/
 │   └── components/          # Sidebar, Breadcrumbs, Tile (SolidJS components)
 └── src-tauri/
     ├── src/
-    │   ├── commands/        # Tauri command handlers
+    │   ├── commands/        # Tauri command handlers, EditModeState
     │   ├── protocols/       # thumb:// and image:// handlers
     │   ├── scan/            # DirScanner, FolderPreviewService
     │   ├── thumbs/          # ThumbnailService, ThumbCache
@@ -301,16 +305,49 @@ The app MUST meet these budgets on an Apple M1 with 8 GB RAM and an SSD.
 - [ ] **INFO-03** The panel SHOULD show EXIF data: camera, lens, focal length, aperture, shutter, ISO, and date taken.
 - [ ] **INFO-04** The panel MAY show the GPS location as coordinates.
 
-### File Operations
+### Edit Mode
 
-- [ ] **FILE-01** `⌘⌫` MUST move the selected files to the macOS Trash.
-- [ ] **FILE-02** The app MUST support undo (`⌘Z`) of a move to Trash.
-- [ ] **FILE-03** `⌘C` MUST copy the selected files to the clipboard as file references.
-- [ ] **FILE-04** The user MUST be able to drag tiles out of the app to Finder and to other apps.
-- [ ] **FILE-05** `⌘⇧R` MUST reveal the selected file in Finder.
-- [ ] **FILE-06** The user MUST be able to rename a selected file or folder from the context menu.
-- [ ] **FILE-07** The user SHOULD be able to open the selected file in another app from the context menu.
-- [ ] **FILE-08** The user SHOULD be able to set an image as the desktop picture.
+Edit mode controls all actions that change files. The app starts with edit mode off.
+
+```mermaid
+stateDiagram-v2
+    [*] --> ReadOnly: app start
+    ReadOnly --> Editing: toggle edit mode
+    Editing --> ReadOnly: toggle edit mode
+    Editing --> Editing: move selected images to Trash
+```
+
+- [ ] **EDIT-01** `⌘E` and a toolbar button MUST toggle edit mode on and off.
+- [ ] **EDIT-02** Edit mode MUST be off at each app start.
+- [ ] **EDIT-03** The window MUST show a visible indicator while edit mode is on.
+- [ ] **EDIT-04** `EditModeState` in the Rust core MUST hold the edit mode state for each window.
+- [ ] **EDIT-05** The `trash_files` command MUST reject the request if edit mode is off.
+- [ ] **EDIT-06** The frontend MUST hide or disable each action that changes files while edit mode is off.
+- [ ] **EDIT-07** The app MUST NOT move, rename, or delete files while edit mode is off.
+
+### File Operations That Change Files
+
+These actions are available only while edit mode is on.
+
+- [ ] **FILE-01** `⌘⌫` MUST move the selected images to the macOS Trash.
+- [ ] **FILE-02** Each image tile and the viewer toolbar MUST show a Move to Trash button.
+- [ ] **FILE-03** The app MUST use the macOS Trash API (`NSFileManager.trashItem`), so Finder "Put Back" works.
+- [ ] **FILE-04** The app MUST NOT show a confirmation dialog for a move to Trash.
+- [ ] **FILE-05** The app MUST support undo (`⌘Z`) of the last move to Trash.
+- [ ] **FILE-06** After a move to Trash in the viewer, the viewer MUST show the next image.
+- [ ] **FILE-07** After a move to Trash in the grid, the selection MUST move to the next tile.
+- [ ] **FILE-08** The app MUST show an error message for a file that it cannot move to Trash.
+
+### File Operations That Do Not Change Files
+
+These actions are available in both modes.
+
+- [ ] **FILE-09** `⌘C` MUST copy the selected files to the clipboard as file references.
+- [ ] **FILE-10** The user MUST be able to drag tiles out of the app to Finder and to other apps.
+- [ ] **FILE-11** A drag out of the app MUST copy the files. It MUST NOT move them.
+- [ ] **FILE-12** `⌘⇧R` MUST reveal the selected file in Finder.
+- [ ] **FILE-13** The user SHOULD be able to open the selected file in another app from the context menu.
+- [ ] **FILE-14** The user SHOULD be able to set an image as the desktop picture.
 
 ### File System Changes
 
@@ -354,5 +391,6 @@ The app MUST meet these budgets on an Apple M1 with 8 GB RAM and an SSD.
 - Quick Look extension that shows the folder preview in Finder.
 - Search by file name inside the open folder tree.
 - Compare view for 2 to 4 selected images.
-- Basic edits: crop, rotate, and save.
+- Basic edits: crop, rotate, and save, available only in edit mode.
+- Rename of files and folders, available only in edit mode.
 - Ratings and tags stored in XMP sidecar files.
