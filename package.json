@@ -1,0 +1,24 @@
+{
+  "name": "fast-gallery",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "tauri": "tauri",
+    "bench": "cd src-tauri && cargo bench --bench core",
+    "build:universal": "tauri build --target universal-apple-darwin"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "solid-js": "^1.9.9"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.8.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vite-plugin-solid": "^2.11.10"
+  }
+}

@@ -1,0 +1,53 @@
+[package]
+name = "fast-gallery"
+version = "0.1.0"
+description = "Fast macOS image browser with recursive folder previews"
+edition = "2021"
+rust-version = "1.90"
+
+[lib]
+name = "fast_gallery_lib"
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.6"
+drag = "2.1"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rayon = "1.12"
+parking_lot = "0.12"
+rusqlite = { version = "0.37", default-features = false }
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
+percent-encoding = "2"
+lru = "0.16"
+crossbeam-channel = "0.5"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
+fast_image_resize = { version = "6", features = ["image"] }
+objc2 = "0.6"
+objc2-core-foundation = { version = "0.3", features = ["CFURL", "CFDictionary", "CFString", "CFNumber", "CFData", "CFArray", "CFBase", "CFCGTypes"] }
+objc2-core-graphics = { version = "0.3", features = ["CGImage", "CGColorSpace", "CGColorSpace", "CGContext", "CGBitmapContext", "CGDataProvider", "CGGeometry", "objc2"] }
+objc2-image-io = { version = "0.3", features = ["CGImageSource", "CGImageDestination", "CGImageProperties", "objc2-core-graphics"] }
+objc2-foundation = { version = "0.3", features = ["NSFileManager", "NSURL", "NSString", "NSArray", "NSError", "NSDictionary", "NSProcessInfo"] }
+objc2-app-kit = { version = "0.3", features = ["NSWorkspace", "NSPasteboard", "NSScreen", "NSPasteboardItem", "NSImage"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[[bench]]
+name = "core"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev.package."*"]
+opt-level = 2
