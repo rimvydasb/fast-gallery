@@ -3,6 +3,9 @@ import { api, baseName, FolderPreview } from "../lib/api";
 import { folderToDelete, setFolderToDelete, sort, trashFolder } from "../lib/store";
 import { imageCount, plural } from "../lib/format";
 import { QueuedThumb } from "./Tile";
+import { Icon } from "./Toolbar";
+
+const TRASH_ICON = "M4 6h12M8 6V4.5h4V6M5.5 6l.8 10h7.4l.8-10M8.5 9v4.5M11.5 9v4.5";
 
 const MAX_THUMBS = 4;
 
@@ -58,13 +61,21 @@ export function DeleteFolderDialog() {
               onMouseDown={(e) => e.stopPropagation()}
               onKeyDown={onKey}
             >
-              <h2 id="dlg-title">Move “{baseName(folder())}” to the Trash?</h2>
-              <p class="dialog-sub">
-                <Show when={preview()} fallback="Counting images…">
-                  {(p) => <>{imageCount(p().count, p().more)} in this folder.</>}
-                </Show>{" "}
-                The whole folder and everything in it will be moved. Undo with ⌘Z.
-              </p>
+              <div class="dialog-header">
+                <div class="dialog-icon">
+                  <Icon d={TRASH_ICON} />
+                </div>
+                <div class="dialog-heading">
+                  <h2 id="dlg-title">
+                    Move <span class="dialog-name">“{baseName(folder())}”</span> to the Trash?
+                  </h2>
+                  <p class="dialog-count">
+                    <Show when={preview()} fallback="Counting images…">
+                      {(p) => <>{imageCount(p().count, p().more)} in this folder</>}
+                    </Show>
+                  </p>
+                </div>
+              </div>
               <Show when={shown().length > 0}>
                 <div class="dialog-previews">
                   <For each={shown()}>
@@ -81,11 +92,15 @@ export function DeleteFolderDialog() {
                   </Show>
                 </div>
               </Show>
+              <p class="dialog-sub">
+                The folder and everything in it will be moved to the Trash. You can undo this with{" "}
+                <kbd>⌘Z</kbd>.
+              </p>
               <div class="dialog-actions">
-                <button id="dlg-cancel" onClick={close}>
+                <button id="dlg-cancel" class="dialog-btn" onClick={close}>
                   Cancel
                 </button>
-                <button class="danger" ref={confirmBtn} onClick={confirm}>
+                <button class="dialog-btn danger" ref={confirmBtn} onClick={confirm}>
                   Move to Trash
                 </button>
               </div>
