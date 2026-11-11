@@ -26,6 +26,7 @@ import {
 import { noteFastScroll, setVisibleRange } from "../lib/thumbQueue";
 import { FolderTile, ImageTile } from "../components/Tile";
 import { openContextMenu } from "../components/ContextMenu";
+import { imageCount } from "../lib/format";
 
 export const GAP = 14;
 export const PAD = 18;
@@ -211,7 +212,7 @@ export function GridView() {
                   aria-selected={selected()}
                   aria-label={
                     entry.d
-                      ? `Folder ${entry.n}${previews[p] ? `, ${previews[p].count} images` : ""}`
+                      ? `Folder ${entry.n}${previews[p] ? `, ${imageCount(previews[p].count, previews[p].more)}` : ""}`
                       : `Image ${entry.n}`
                   }
                   style={{

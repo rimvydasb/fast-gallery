@@ -21,6 +21,11 @@ export function formatExposure(s: number): string {
   return `1/${Math.round(1 / s)} s`;
 }
 
+/** "12 images", or "124+ images" when the count is a lower bound. */
+export function imageCount(n: number, more = false): string {
+  return more ? `${n.toLocaleString()}+ images` : plural(n, "image", "images");
+}
+
 export function plural(n: number, one: string, many: string): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 }

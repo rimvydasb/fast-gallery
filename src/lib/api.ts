@@ -30,7 +30,9 @@ export interface FolderPreview {
   folder: string;
   sort: string;
   images: PreviewImage[];
+  /** Images seen in the folder tree; a lower bound when `more` is true. */
   count: number;
+  more?: boolean;
 }
 
 export interface FolderPrefs {

@@ -1,7 +1,7 @@
 import { createSignal, For, onCleanup, Show } from "solid-js";
 import { Entry, FolderPreview, thumbUrl } from "../lib/api";
 import { requestThumb } from "../lib/thumbQueue";
-import { plural } from "../lib/format";
+import { imageCount } from "../lib/format";
 
 /** THM-02: 512 px thumbnails for tiles larger than 256 px or on Retina displays. */
 export function thumbSizeFor(tile: number): 256 | 512 {
@@ -108,7 +108,7 @@ export function FolderTile(props: TileProps) {
       <div class="tile-label" title={props.entry.n}>
         <span class="tile-name">{props.entry.n}</span>
         <Show when={props.preview}>
-          {(p) => <span class="tile-count">{plural(p().count, "image", "images")}</span>}
+          {(p) => <span class="tile-count">{imageCount(p().count, p().more)}</span>}
         </Show>
       </div>
     </>

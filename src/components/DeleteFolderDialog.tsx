@@ -1,7 +1,7 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { api, baseName, FolderPreview } from "../lib/api";
 import { folderToDelete, setFolderToDelete, sort, trashFolder } from "../lib/store";
-import { plural } from "../lib/format";
+import { imageCount, plural } from "../lib/format";
 import { QueuedThumb } from "./Tile";
 
 const MAX_THUMBS = 4;
@@ -61,7 +61,7 @@ export function DeleteFolderDialog() {
               <h2 id="dlg-title">Move “{baseName(folder())}” to the Trash?</h2>
               <p class="dialog-sub">
                 <Show when={preview()} fallback="Counting images…">
-                  {(p) => <>{plural(p().count, "image", "images")} in this folder.</>}
+                  {(p) => <>{imageCount(p().count, p().more)} in this folder.</>}
                 </Show>{" "}
                 The whole folder and everything in it will be moved. Undo with ⌘Z.
               </p>
@@ -75,8 +75,8 @@ export function DeleteFolderDialog() {
                     )}
                   </For>
                   <Show when={more() > 0}>
-                    <div class="dialog-thumb dialog-more" title={`${plural(more(), "more image", "more images")}`}>
-                      +{more().toLocaleString()}
+                    <div class="dialog-thumb dialog-more" title={`${plural(more(), "more image", "more images")}${preview()?.more ? " or more" : ""}`}>
+                      +{more().toLocaleString()}{preview()?.more ? "+" : ""}
                     </div>
                   </Show>
                 </div>

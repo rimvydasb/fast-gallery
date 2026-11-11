@@ -28,8 +28,12 @@ pub struct FolderPreview {
     pub folder: String,
     pub sort: String,
     pub images: Vec<PreviewImage>,
-    /// Number of direct image children (FPV-13).
+    /// Number of images seen in the folder tree while the preview was resolved (FPV-13). The root
+    /// folder is always counted in full; subfolders only as far as the preview traversal went.
     pub count: u32,
+    /// True when the traversal stopped before the whole tree was seen, so `count` is a lower bound.
+    #[serde(default)]
+    pub more: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -50,6 +54,7 @@ struct State<'a> {
     budget: usize,
     images: Vec<PreviewImage>,
     count: u32,
+    more: bool,
     index: &'a PreviewIndex,
 }
 
@@ -57,46 +62,55 @@ struct State<'a> {
 /// (FPV-06), within the depth and entry limits (FPV-07, FPV-08). Symbolic links, hidden folders,
 /// and package folders are skipped (FPV-09, FPV-10).
 pub fn resolve(folder: &Path, sort: SortSpec, limits: Limits, index: &PreviewIndex) -> FolderPreview {
-    let mut st = State { sort, limits, budget: limits.max_entries, images: Vec::new(), count: 0, index };
+    let mut st = State { sort, limits, budget: limits.max_entries, images: Vec::new(), count: 0, more: false, index };
     visit(folder, 0, &mut st);
     FolderPreview {
         folder: folder.to_string_lossy().into_owned(),
         sort: sort.as_key(),
         images: st.images,
         count: st.count,
+        more: st.more,
     }
 }
 
 fn visit(dir: &Path, depth: usize, st: &mut State) {
     if depth > 0 && st.budget == 0 {
+        st.more = true;
         return;
     }
-    // The root folder is read in full, so that the direct image count is exact.
+    // The root folder is read in full, so that its direct image count is exact.
     let max = if depth == 0 { usize::MAX } else { st.budget };
     let Ok((mut entries, read)) =
         read_entries(dir, &ListOptions { show_hidden: false, max_entries: max, follow_links: false })
     else {
         return;
     };
+    if read >= max {
+        // The folder may have more entries than were read.
+        st.more = true;
+    }
     st.budget = st.budget.saturating_sub(read);
-    if depth == 0 {
-        st.count = entries.iter().filter(|e| !e.d).count() as u32;
-    }
-    if st.sort.key == SortKey::Taken && entries.iter().any(|e| !e.d) {
-        fill_taken(dir, &mut entries, st.index);
-    }
-    sort_entries(&mut entries, st.sort);
-    for e in entries.iter().filter(|e| !e.d) {
-        if st.images.len() >= PREVIEW_COUNT {
-            return;
+    st.count += entries.iter().filter(|e| !e.d).count() as u32;
+    let has_dirs = entries.iter().any(|e| e.d);
+    if st.images.len() < PREVIEW_COUNT {
+        if st.sort.key == SortKey::Taken && entries.iter().any(|e| !e.d) {
+            fill_taken(dir, &mut entries, st.index);
         }
-        st.images.push(PreviewImage { p: dir.join(&e.n).to_string_lossy().into_owned(), m: e.m });
+        sort_entries(&mut entries, st.sort);
+        for e in entries.iter().filter(|e| !e.d).take(PREVIEW_COUNT - st.images.len()) {
+            st.images.push(PreviewImage { p: dir.join(&e.n).to_string_lossy().into_owned(), m: e.m });
+        }
+    }
+    if !has_dirs {
+        return;
     }
     if st.images.len() >= PREVIEW_COUNT || depth >= st.limits.depth {
+        st.more = true;
         return;
     }
     for e in entries.iter().filter(|e| e.d) {
         if st.budget == 0 || st.images.len() >= PREVIEW_COUNT {
+            st.more = true;
             return;
         }
         visit(&dir.join(&e.n), depth + 1, st);
@@ -201,7 +215,9 @@ mod tests {
         let idx = PreviewIndex::in_memory().unwrap();
         let p = resolve(&root, SortSpec::default(), Limits::default(), &idx);
         assert_eq!(names(&p), ["top2.png", "top10.jpg", "image1.jpg", "image5.jpg"]);
-        assert_eq!(p.count, 2);
+        // 2 direct + 01/image1 + 01/deeper/image5; 02 was not visited.
+        assert_eq!(p.count, 4);
+        assert!(p.more);
     }
 
     #[test]
@@ -235,5 +251,24 @@ mod tests {
         assert!(p.images.is_empty());
         let p = resolve(&root, SortSpec::default(), Limits::default(), &idx);
         assert_eq!(names(&p), ["img.jpg"]);
+    }
+
+    #[test]
+    fn counts_images_of_subfolders_when_root_has_none() {
+        let t = tempfile::tempdir().unwrap();
+        let root = t.path().join("r");
+        touch(&root.join("a/1.jpg"));
+        touch(&root.join("a/2.jpg"));
+        touch(&root.join("b/3.jpg"));
+        let idx = PreviewIndex::in_memory().unwrap();
+        let p = resolve(&root, SortSpec::default(), Limits::default(), &idx);
+        assert_eq!(p.count, 3);
+        assert!(!p.more);
+        for i in 0..5 {
+            touch(&root.join(format!("c/x{i}.jpg")));
+        }
+        let p = resolve(&root, SortSpec::default(), Limits::default(), &idx);
+        assert_eq!(p.count, 8);
+        assert!(!p.more);
     }
 }

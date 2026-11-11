@@ -273,7 +273,7 @@ The app MUST meet these budgets on an Apple M1 with 8 GB RAM and an SSD.
   `.photoslibrary`.
 - [x] **FPV-11** A folder with 1 to 3 images MUST show only the images it has.
 - [x] **FPV-12** A folder with no images MUST show an empty folder shape.
-- [x] **FPV-13** The folder tile MUST show the folder name and the total image count of the direct children.
+- [x] **FPV-13** The folder tile MUST show the folder name and the number of images seen in the folder tree while the preview is resolved, with a "+" suffix when the traversal stopped before the whole tree was seen.
 - [x] **FPV-14** `FolderPreviewService` MUST resolve previews in parallel, visible folder tiles first.
 - [x] **FPV-15** `FolderPreviewService` MUST send each result to the frontend as a `folder-preview-ready` event.
 - [x] **FPV-16** `FolderPreviewService` MUST store each `FolderPreview` in `PreviewIndex`.
