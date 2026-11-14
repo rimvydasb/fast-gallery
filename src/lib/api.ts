@@ -123,6 +123,7 @@ export const api = {
   clearCache: () => invoke<void>("clear_cache"),
   setEditMode: (on: boolean) => invoke<boolean>("set_edit_mode", { on }),
   trashFiles: (paths: string[]) => invoke<TrashResult>("trash_files", { paths }),
+  renameFile: (path: string, newName: string) => invoke<string>("rename_file", { path, newName }),
   undoTrash: () => invoke<string[]>("undo_trash"),
   copyFiles: (paths: string[]) => invoke<boolean>("copy_files", { paths }),
   revealInFinder: (paths: string[]) => invoke<void>("reveal_in_finder", { paths }),

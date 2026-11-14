@@ -248,7 +248,20 @@ pub async fn trash_files(window: WebviewWindow, state: State<'_, AppState>, path
     r.map_err(|m| CmdError { kind: "editOff", message: m })
 }
 
-/// FILE-05: undo of the last move to Trash.
+/// FILE-14: renames a file in its folder. Rejected if edit mode is off (EDIT-05). Returns the new path.
+#[tauri::command]
+pub async fn rename_file(window: WebviewWindow, state: State<'_, AppState>, path: String, new_name: String) -> CmdResult<String> {
+    if !state.edit.is_on(window.label()) {
+        return Err(CmdError { kind: "editOff", message: edit::EDIT_OFF.into() });
+    }
+    let app = window.app_handle().clone();
+    let label = window.label().to_string();
+    blocking(move || app.state::<AppState>().edit.rename(&label, &path, &new_name))
+        .await?
+        .map_err(CmdError::other)
+}
+
+/// FILE-05, FILE-17: undo of the last move to Trash or rename.
 #[tauri::command]
 pub async fn undo_trash(window: WebviewWindow) -> CmdResult<Vec<String>> {
     let app = window.app_handle().clone();

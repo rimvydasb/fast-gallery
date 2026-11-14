@@ -364,6 +364,10 @@ These actions are available in both modes.
 - [ ] **FILE-11** A drag out of the app MUST copy the files. It MUST NOT move them.
 - [ ] **FILE-12** `⌘⇧R` MUST reveal the selected file in Finder.
 - [ ] **FILE-13** The user SHOULD be able to open the selected file in another app from the context menu.
+- [x] **FILE-14** While edit mode is on, the context menu of one selected image MUST show Rename…, and the `rename_file` command MUST reject the request if edit mode is off (EDIT-05).
+- [x] **FILE-15** The rename dialog MUST reject an empty name, a name with `/` or `:`, `.`, `..`, and a name longer than 255 bytes.
+- [x] **FILE-16** A rename MUST NOT replace an existing file. A rename that only changes the letter case MUST work.
+- [x] **FILE-17** `⌘Z` MUST undo the last rename.
 
 ### File System Changes
 

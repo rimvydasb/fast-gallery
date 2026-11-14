@@ -13,6 +13,7 @@ const COMMANDS: &[&str] = &[
     "set_edit_mode",
     "get_edit_mode",
     "trash_files",
+    "rename_file",
     "undo_trash",
     "copy_files",
     "reveal_in_finder",

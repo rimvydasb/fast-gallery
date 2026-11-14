@@ -37,6 +37,7 @@ export const ICONS = {
   up: "M10 15V5M5 10l5-5 5 5",
   info: "M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM10 9v5M10 6.5v.01",
   edit: "M4 16l1-4 8-8 3 3-8 8zM11 6l3 3",
+  rename: "M7 4h6M10 4v12M7 16h6",
   trash: "M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10",
   grid: "M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z",
   play: "M6 4l10 6-10 6z",

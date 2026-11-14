@@ -8,6 +8,7 @@ import {
   openEntry,
   openFolderDialog,
   path,
+  requestRename,
   requestTrashItems,
   revealSelection,
   selectedEntries,
@@ -110,8 +111,9 @@ export function selectionMenuItems(): MenuItem[] {
       : sel.length === 1
         ? "Move to Trash"
         : `Move ${sel.length} Items to Trash`;
+    items.push({ separator: true, label: "" });
+    if (one && !one.d) items.push({ label: "Rename…", icon: ICONS.rename, action: () => requestRename(one) });
     items.push(
-      { separator: true, label: "" },
       {
         label,
         icon: ICONS.trash,

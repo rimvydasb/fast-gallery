@@ -25,6 +25,7 @@
     "allow-set-edit-mode",
     "allow-get-edit-mode",
     "allow-trash-files",
+    "allow-rename-file",
     "allow-undo-trash",
     "allow-copy-files",
     "allow-reveal-in-finder",

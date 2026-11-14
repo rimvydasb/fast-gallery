@@ -1,4 +1,4 @@
-//! File operations that do not change files (FILE-09..FILE-14).
+//! File operations that do not change files (FILE-09..FILE-13).
 
 use std::path::{Path, PathBuf};
 

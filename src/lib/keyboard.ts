@@ -30,6 +30,7 @@ import {
   images,
   clearSelection,
   deleteRequest,
+  renameRequest,
 } from "./store";
 import { gridCols, scrollToIndex } from "../views/GridView";
 import * as viewer from "../views/ViewerView";
@@ -225,7 +226,7 @@ function viewerKey(e: KeyboardEvent): boolean {
 }
 
 export function onKeyDown(e: KeyboardEvent) {
-  if (e.defaultPrevented || contextMenuOpen() || deleteRequest() !== null) return;
+  if (e.defaultPrevented || contextMenuOpen() || deleteRequest() !== null || renameRequest() !== null) return;
   if (isTextInput(e.target)) return;
   const cmd = e.metaKey;
   let handled = false;

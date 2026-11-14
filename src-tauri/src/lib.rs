@@ -274,6 +274,7 @@ pub fn run() {
             commands::set_edit_mode,
             commands::get_edit_mode,
             commands::trash_files,
+            commands::rename_file,
             commands::undo_trash,
             commands::copy_files,
             commands::reveal_in_finder,

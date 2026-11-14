@@ -15,6 +15,7 @@ import {
   SortSpec,
   sortKeyString,
 } from "./api";
+import { validateFileName } from "./rename";
 import { clearQueue } from "./thumbQueue";
 import { toast } from "./toast";
 
@@ -466,4 +467,41 @@ export async function trashItems(req: DeleteRequest) {
     setEntries(remaining);
     clearSelection();
   });
+}
+
+// ---------- Rename (edit mode) ----------
+
+/** The file path that waits for a new name in the rename dialog, or null. */
+export const [renameRequest, setRenameRequest] = createSignal<string | null>(null);
+
+/** Opens the rename dialog for one file. Requires edit mode (EDIT-06). */
+export function requestRename(item: Entry) {
+  if (!editMode()) {
+    toast("Turn on edit mode (⌘E) to rename files.", "info");
+    return;
+  }
+  if (item.d) return;
+  setRenameRequest(entryPath(item));
+}
+
+/** FILE-14: renames the file. Returns an error message for the dialog, or null on success. */
+export async function renameFile(from: string, newName: string): Promise<string | null> {
+  if (!editMode()) return "Turn on edit mode (⌘E) to rename files.";
+  const name = newName.trim();
+  const invalid = validateFileName(name);
+  if (invalid) return invalid;
+  if (name === baseName(from)) return "The name did not change.";
+  try {
+    const to = await api.renameFile(from, name);
+    setRenameRequest(null);
+    toast(`Renamed “${baseName(from)}” to “${baseName(to)}”. ⌘Z to undo.`, "info");
+    await reload();
+    if (parentPath(to) === path()) {
+      const i = entries().findIndex((e) => e.n === baseName(to));
+      if (i >= 0) selectOnly(i);
+    }
+    return null;
+  } catch (e) {
+    return errorMessage(e);
+  }
 }

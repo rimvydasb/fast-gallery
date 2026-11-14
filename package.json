@@ -6,8 +6,13 @@
   "scripts": {
     "start": "tauri dev",
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run build:frontend",
+    "build:frontend": "tsc --noEmit && vite build",
+    "build:backend": "tauri build --no-bundle --config '{\"build\":{\"beforeBuildCommand\":\"\"}}'",
+    "build:all": "tauri build",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:rust": "cd src-tauri && cargo test --lib",
     "tauri": "tauri",
     "bench": "cd src-tauri && cargo bench --bench core",
     "build:universal": "tauri build --target universal-apple-darwin"
@@ -18,8 +23,10 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.8.4",
+    "jsdom": "^26.1.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
-    "vite-plugin-solid": "^2.11.10"
+    "vite-plugin-solid": "^2.11.10",
+    "vitest": "^3.2.7"
   }
 }
