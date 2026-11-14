@@ -112,14 +112,68 @@ impl EditModeState {
     }
 }
 
-/// FILE-03: NSFileManager.trashItem, so that Finder "Put Back" works.
+/// FILE-03: NSFileManager.trashItem, so that Finder "Put Back" works. A volume without a Trash (a
+/// network share) gets the fallback in `trash_on_volume` instead.
 fn trash_item(path: &str) -> Result<Option<PathBuf>, String> {
     let url = NSURL::fileURLWithPath(&NSString::from_str(path));
     let fm = NSFileManager::defaultManager();
     let mut out: Option<objc2::rc::Retained<NSURL>> = None;
-    fm.trashItemAtURL_resultingItemURL_error(&url, Some(&mut out))
-        .map_err(|e| e.localizedDescription().to_string())?;
-    Ok(out.and_then(|u| u.path()).map(|p| PathBuf::from(p.to_string())))
+    match fm.trashItemAtURL_resultingItemURL_error(&url, Some(&mut out)) {
+        Ok(()) => Ok(out.and_then(|u| u.path()).map(|p| PathBuf::from(p.to_string()))),
+        Err(e) => {
+            let msg = e.localizedDescription().to_string();
+            // NSFeatureUnsupportedError: the volume has no Trash. Other errors (permissions) stay errors.
+            if e.code() != NS_FEATURE_UNSUPPORTED {
+                return Err(msg);
+            }
+            match trash_on_volume(std::path::Path::new(path)) {
+                Ok(dest) => Ok(Some(dest)),
+                Err(fallback) => Err(format!("{msg} (fallback failed: {fallback})")),
+            }
+        }
+    }
+}
+
+/// `NSFeatureUnsupportedError` in `NSCocoaErrorDomain`.
+const NS_FEATURE_UNSUPPORTED: isize = 3328;
+
+/// Name of the folder at the volume root that receives files from a volume without a Trash.
+const VOLUME_TRASH: &str = ".fast-gallery-trash";
+
+/// Mount point of the volume that holds `path`.
+fn mount_point(path: &std::path::Path) -> Result<PathBuf, String> {
+    use std::ffi::{CStr, CString};
+    use std::os::unix::ffi::OsStrExt;
+    let c = CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+    let mut st: libc::statfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statfs(c.as_ptr(), &mut st) } != 0 {
+        return Err(std::io::Error::last_os_error().to_string());
+    }
+    let on = unsafe { CStr::from_ptr(st.f_mntonname.as_ptr()) };
+    Ok(PathBuf::from(std::ffi::OsStr::from_bytes(on.to_bytes())))
+}
+
+/// Fallback for a volume without a Trash: moves the file to `<volume root>/.fast-gallery-trash/`. This is a
+/// rename on the same volume, so it is fast and undo can move the file back. Never replaces a file.
+fn trash_on_volume(path: &std::path::Path) -> Result<PathBuf, String> {
+    let root = mount_point(path)?;
+    let dir = root.join(VOLUME_TRASH);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let name = path.file_name().ok_or("The path has no file name.")?.to_string_lossy().into_owned();
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+        _ => (name.clone(), String::new()),
+    };
+    for n in 0..1000 {
+        let candidate = if n == 0 { name.clone() } else { format!("{stem} ({n}){ext}") };
+        let dest = dir.join(candidate);
+        if std::fs::symlink_metadata(&dest).is_ok() {
+            continue;
+        }
+        std::fs::rename(path, &dest).map_err(|e| format!("{}: {e}", dest.display()))?;
+        return Ok(dest);
+    }
+    Err("Too many files with the same name in the volume trash.".into())
 }
 
 /// Longest file name that APFS accepts, in bytes.
