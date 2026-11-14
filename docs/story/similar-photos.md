@@ -26,6 +26,11 @@
     - [ ] Medium - same as high, but less similar photos.
     - [ ] Low - same as medium, but slightly similar photos.
 
+Ideas that can be used or not (take them as proposal, not strict requirement):
+- Perceptual Hashing (pHash) + compared using Hamming distance. If slow, then dHash.
+- `image_hasher`
+- combine temporal proximity (timestamps) with tight perceptual hash verification
+
 ### Collapsing
 
 - [ ] User is able to collapse photos to virtual collapsed folders **by similarity**. The folder has a single photo as a
