@@ -286,15 +286,6 @@ pub async fn open_with(path: String, app: Option<String>) -> CmdResult<()> {
 }
 
 #[tauri::command]
-pub async fn set_desktop_picture(app: AppHandle, path: String) -> CmdResult<()> {
-    on_main(&app, move || {
-        let mtm = objc2::MainThreadMarker::new().expect("main thread");
-        files::set_desktop_picture(mtm, &path)
-    })?
-    .map_err(CmdError::other)
-}
-
-#[tauri::command]
 pub fn open_privacy_settings() {
     std::thread::spawn(files::open_privacy_settings);
 }

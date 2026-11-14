@@ -1,4 +1,3 @@
-import { Show } from "solid-js";
 import { SortKey } from "../lib/api";
 import {
   editMode,
@@ -46,6 +45,15 @@ export const ICONS = {
   rotR: "M16 9a6 6 0 1 0-2 5M16 4v5h-5",
   strip: "M2 13h16v4H2zM2 3h16v8H2z",
   asc: "M6 15V5M3 8l3-3 3 3M12 6h5M12 10h4M12 14h3",
+  folder: "M2.5 5.5V15h15V7H9.5L8 5.5zM2.5 8.5",
+  window: "M3 4h14v12H3zM3 7.5h14",
+  star: "M10 3l2.2 4.6 5 .7-3.6 3.5.9 5-4.5-2.4-4.5 2.4.9-5L2.8 8.3l5-.7z",
+  eye: "M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6zM10 12.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
+  eyeOff: "M3 3l14 14M8.5 5.2Q9.2 5 10 5c5 0 8 5 8 5a14 14 0 0 1-2.6 3M5.5 6.8C3.5 8.2 2 10 2 10s3 5 8 5q1.2 0 2.3-.4",
+  reveal: "M3 4h14v12H3zM8 12l5-5M9 7h4v4",
+  copy: "M7 7h9v10H7zM4 13V3h9",
+  open: "M5 15L15 5M7.500 5H15v7.500",
+  openWith: "M3 4h14v12H3zM7 10h6M10 7l3 3-3 3",
   desc: "M6 5v10M3 12l3 3 3-3M12 6h3M12 10h4M12 14h5",
 };
 

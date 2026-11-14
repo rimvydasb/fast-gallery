@@ -864,6 +864,17 @@ input {
   white-space: nowrap;
 }
 
+.menu-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.menu-label .icon {
+  width: 14px;
+  height: 14px;
+}
+
 .menu-item.active {
   background: var(--accent);
   color: #fff;

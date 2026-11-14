@@ -364,7 +364,6 @@ These actions are available in both modes.
 - [ ] **FILE-11** A drag out of the app MUST copy the files. It MUST NOT move them.
 - [ ] **FILE-12** `⌘⇧R` MUST reveal the selected file in Finder.
 - [ ] **FILE-13** The user SHOULD be able to open the selected file in another app from the context menu.
-- [ ] **FILE-14** The user SHOULD be able to set an image as the desktop picture.
 
 ### File System Changes
 

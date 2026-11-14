@@ -279,7 +279,6 @@ pub fn run() {
             commands::reveal_in_finder,
             commands::open_with_apps,
             commands::open_with,
-            commands::set_desktop_picture,
             commands::open_privacy_settings,
             commands::start_drag,
             commands::pick_folder,

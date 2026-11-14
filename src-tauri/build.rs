@@ -18,7 +18,6 @@ const COMMANDS: &[&str] = &[
     "reveal_in_finder",
     "open_with_apps",
     "open_with",
-    "set_desktop_picture",
     "open_privacy_settings",
     "start_drag",
     "pick_folder",

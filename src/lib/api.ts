@@ -128,7 +128,6 @@ export const api = {
   revealInFinder: (paths: string[]) => invoke<void>("reveal_in_finder", { paths }),
   openWithApps: (path: string) => invoke<AppInfo[]>("open_with_apps", { path }),
   openWith: (path: string, app: string | null) => invoke<void>("open_with", { path, app }),
-  setDesktopPicture: (path: string) => invoke<void>("set_desktop_picture", { path }),
   openPrivacySettings: () => invoke<void>("open_privacy_settings"),
   startDrag: (paths: string[]) => invoke<void>("start_drag", { paths }),
   pickFolder: () => invoke<string | null>("pick_folder"),

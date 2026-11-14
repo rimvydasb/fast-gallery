@@ -1,5 +1,5 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
-import { api, baseName, errorMessage } from "../lib/api";
+import { api, errorMessage } from "../lib/api";
 import {
   copySelection,
   editMode,
@@ -18,6 +18,7 @@ import {
   trashSelection,
 } from "../lib/store";
 import { toast } from "../lib/toast";
+import { Icon, ICONS } from "./Toolbar";
 
 export interface MenuItem {
   label: string;
@@ -27,6 +28,8 @@ export interface MenuItem {
   submenu?: () => Promise<MenuItem[]>;
   separator?: boolean;
   danger?: boolean;
+  /** Path data for a leading icon (see ICONS). */
+  icon?: string;
 }
 
 const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuItem[] } | null>(null);
@@ -61,19 +64,20 @@ export function selectionMenuItems(): MenuItem[] {
   const favs = settings()?.favorites ?? [];
   if (sel.length === 0) {
     const items: MenuItem[] = [
-      { label: "Open Folder…", shortcut: "⌘O", action: openFolderDialog },
-      { label: "New Window", shortcut: "⌘N", action: () => api.newWindow() },
+      { label: "Open Folder…", icon: ICONS.folder, shortcut: "⌘O", action: openFolderDialog },
+      { label: "New Window", icon: ICONS.window, shortcut: "⌘N", action: () => api.newWindow() },
     ];
     if (cur) {
       items.push(
         { separator: true, label: "" },
         {
           label: favs.includes(cur) ? "Remove Folder from Favorites" : "Add Folder to Favorites",
+          icon: ICONS.star,
           shortcut: "⌘D",
           action: () => toggleFavorite(cur),
         },
-        { label: showHidden() ? "Hide Hidden Files" : "Show Hidden Files", shortcut: "⌘⇧.", action: toggleHidden },
-        { label: "Reveal Folder in Finder", shortcut: "⌘⇧R", action: () => api.revealInFinder([cur]) },
+        { label: showHidden() ? "Hide Hidden Files" : "Show Hidden Files", icon: showHidden() ? ICONS.eyeOff : ICONS.eye, shortcut: "⌘⇧.", action: toggleHidden },
+        { label: "Reveal Folder in Finder", icon: ICONS.reveal, shortcut: "⌘⇧R", action: () => api.revealInFinder([cur]) },
       );
     }
     return items;
@@ -82,37 +86,28 @@ export function selectionMenuItems(): MenuItem[] {
   const onePath = one ? entryPath(one) : null;
   const items: MenuItem[] = [];
   if (one && onePath) {
-    items.push({ label: one.d ? "Open" : "Open in Viewer", shortcut: one.d ? "⌘↓" : "↩", action: () => openEntry(entries().indexOf(one)) });
-    if (!one.d) items.push({ label: "Open With", submenu: openWithItems(onePath) });
+    items.push({ label: one.d ? "Open" : "Open in Viewer", icon: ICONS.open, shortcut: one.d ? "⌘↓" : "↩", action: () => openEntry(entries().indexOf(one)) });
+    if (!one.d) items.push({ label: "Open With", icon: ICONS.openWith, submenu: openWithItems(onePath) });
     if (one.d)
       items.push({
         label: favs.includes(onePath) ? "Remove from Favorites" : "Add to Favorites",
+        icon: ICONS.star,
         shortcut: "⌘D",
         action: () => toggleFavorite(onePath),
       });
   }
   items.push(
-    { label: "Reveal in Finder", shortcut: "⌘⇧R", action: () => revealSelection() },
-    { label: sel.length === 1 ? "Copy" : `Copy ${sel.length} Items`, shortcut: "⌘C", action: () => copySelection() },
+    { label: "Reveal in Finder", icon: ICONS.reveal, shortcut: "⌘⇧R", action: () => revealSelection() },
+    { label: sel.length === 1 ? "Copy" : `Copy ${sel.length} Items`, icon: ICONS.copy, shortcut: "⌘C", action: () => copySelection() },
   );
-  if (one && !one.d && onePath) {
-    items.push({
-      label: "Set as Desktop Picture",
-      action: () =>
-        api
-          .setDesktopPicture(onePath)
-          .then(() => toast(`Set “${baseName(onePath)}” as the desktop picture.`))
-          .catch((e) => toast(errorMessage(e), "error")),
-    });
-  }
   // EDIT-06: actions that change files only in edit mode.
   if (editMode() && sel.some((e) => !e.d)) {
-    items.push({ separator: true, label: "" }, { label: "Move to Trash", shortcut: "⌘⌫", danger: true, action: trashSelection });
+    items.push({ separator: true, label: "" }, { label: "Move to Trash", icon: ICONS.trash, shortcut: "⌘⌫", danger: true, action: trashSelection });
   }
   if (editMode() && one?.d && onePath) {
     items.push(
       { separator: true, label: "" },
-      { label: "Move Folder to Trash…", danger: true, action: () => requestTrashFolder(onePath) },
+      { label: "Move Folder to Trash…", icon: ICONS.trash, danger: true, action: () => requestTrashFolder(onePath) },
     );
   }
   return items;
@@ -219,7 +214,10 @@ export function ContextMenu() {
                   onMouseEnter={() => selectable(i()) && setActive(i())}
                   onClick={() => run(item)}
                 >
-                  <span>{item.label}</span>
+                  <span class="menu-label">
+                    {item.icon && <Icon d={item.icon} />}
+                    {item.label}
+                  </span>
                   <span class="menu-shortcut">{item.submenu ? "›" : item.shortcut ?? ""}</span>
                 </div>
               )

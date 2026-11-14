@@ -4,9 +4,8 @@ use std::path::{Path, PathBuf};
 
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
-use objc2::MainThreadMarker;
-use objc2_app_kit::{NSPasteboard, NSPasteboardWriting, NSScreen, NSWorkspace};
-use objc2_foundation::{NSArray, NSDictionary, NSString, NSURL};
+use objc2_app_kit::{NSPasteboard, NSPasteboardWriting, NSWorkspace};
+use objc2_foundation::{NSArray, NSString, NSURL};
 use serde::Serialize;
 
 fn file_url(p: &str) -> Retained<NSURL> {
@@ -71,18 +70,6 @@ pub fn open_with(path: &str, app: Option<&str>) -> Result<(), String> {
     } else {
         Err(format!("Could not open {path}"))
     }
-}
-
-/// FILE-14: sets the image as the desktop picture of each screen. Main thread only.
-pub fn set_desktop_picture(mtm: MainThreadMarker, path: &str) -> Result<(), String> {
-    let ws = NSWorkspace::sharedWorkspace();
-    let url = file_url(path);
-    let opts = NSDictionary::new();
-    for screen in NSScreen::screens(mtm).iter() {
-        unsafe { ws.setDesktopImageURL_forScreen_options_error(&url, &screen, &opts) }
-            .map_err(|e| e.localizedDescription().to_string())?;
-    }
-    Ok(())
 }
 
 /// SEC-05: opens System Settings at Full Disk Access. Called only after a read fails with a
