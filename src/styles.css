@@ -108,17 +108,6 @@ input {
   height: 100%;
 }
 
-/* EDIT-03: visible indicator while edit mode is on. */
-.app.editing::after,
-.viewer-layer.editing::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  border: 2px solid var(--edit);
-  pointer-events: none;
-  z-index: 50;
-}
-
 /* ---------- Toolbar (transparent title bar, PLAT-05) ---------- */
 .toolbar {
   height: 44px;
@@ -183,16 +172,10 @@ input {
   color: var(--danger);
 }
 
-.edit-toggle.on {
+.edit-toggle.on,
+.edit-toggle.on:hover:not(:disabled) {
   color: var(--edit);
   background: color-mix(in srgb, var(--edit) 16%, transparent);
-}
-
-.edit-pill {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .icon {

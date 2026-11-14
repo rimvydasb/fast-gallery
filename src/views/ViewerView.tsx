@@ -400,9 +400,6 @@ export function ViewerView() {
         </label>
         <button class="tb-btn edit-toggle" classList={{ on: editMode() }} title="Edit Mode (⌘E)" aria-pressed={editMode()} aria-label="Edit mode" onClick={toggleEditMode}>
           <Icon d={ICONS.edit} />
-          <Show when={editMode()}>
-            <span class="edit-pill">Editing</span>
-          </Show>
         </button>
         <Show when={editMode()}>
           <button class="tb-btn danger" title="Move to Trash (⌘⌫)" aria-label="Move to Trash" onClick={trashViewerImage}>

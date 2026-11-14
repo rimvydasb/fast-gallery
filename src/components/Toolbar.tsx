@@ -93,9 +93,6 @@ export function Toolbar() {
         onClick={toggleEditMode}
       >
         <Icon d={ICONS.edit} />
-        <Show when={editMode()}>
-          <span class="edit-pill">Editing</span>
-        </Show>
       </button>
       <button class="tb-btn" classList={{ on: infoOpen() }} title="Info (⌘I)" aria-pressed={infoOpen()} aria-label="Info" onClick={() => setInfoOpen(!infoOpen())}>
         <Icon d={ICONS.info} />
