@@ -50,3 +50,29 @@
 - **Decision:** `trash_files`, `undo_trash`, and `rename_file` call `TaskRunner::guard_paths` and return `locked`. `clear_cache`, `remove_collection`, and each task start command call `TaskRunner::guard` and return `busy`.
 - **Rejected:** A frontend-only block - it depends on each window having the current busy state.
 - **Consequences:** A path conflicts with a locked tree if it is the root or inside the tree. A folder that contains the root also conflicts. Finder and other apps can still change the tree; the pipeline treats a missing file as failed.
+
+## ADR-007: The Rust core arranges a listing; groups are ranges of a flat list
+
+- **Status:** Accepted
+- **Context:** The grid must divide the images into groups (date, size, type, quality, similarity) and sort by quality and by similarity. The selection, the viewer, the keyboard, and the file actions use indexes into 1 flat list of entries.
+- **Decision:** `list_dir` and `list_collection` get a `group` argument. `scan::arrange` sorts the images, puts the images of each group side by side, and returns `groups` (label and count, in order) with the flat `entries`. The folders stay first, with no header. `GridView` lays out each group as a section with a header line; the grouping is stored per location in `FolderPrefs`.
+- **Rejected:** Groups computed in the frontend - quality and similarity need the analysis cache, and the date taken is only in the Rust core.
+- **Rejected:** A nested listing (groups that contain entries) - each consumer of `entries()` needs a change.
+- **Consequences:** The direction button also reverses the order of date groups and size groups. A row does not cross a group, so Up and Down use `gridMove`, not index ± columns.
+
+## ADR-008: A sort or grouping that reads analysis results starts a task for the location
+
+- **Status:** Accepted
+- **Context:** Quality and similarity need a decode of each image. A listing must stay fast.
+- **Decision:** A listing reads only the `analysis` cache and reports `missing` and `need`. The frontend (`analysis.ts`) then starts the task `AnalyzePhotos` for the images of the location (a folder without its subfolders, or a collection) and lists again on `task-done`. Images without a result are in the group "Not analyzed". `run_pipeline` reads an `ImageSource`: a `TreeWalker` or a `ListSource`.
+- **Rejected:** Analysis in `list_dir` - no progress, no cancel, and a slow first listing.
+- **Consequences:** ADR-001 applies: the analysis waits while another task runs, and it locks the folder against file changes until it ends. An image that cannot be decoded stays "Not analyzed"; the task does not start again for it by itself.
+
+## ADR-009: Similarity is a score from 2 perceptual hashes, a color layout, and a color histogram
+
+- **Status:** Accepted
+- **Context:** Groups by similarity must not use the name, size, or type of a file. Photos of a hand-held series have hashes that differ like the hashes of unrelated photos (measured on `examples/example gallery/somebursts`).
+- **Decision:** `SimilarityAnalyzer` stores a `Signature` for each image: pHash and dHash (64 bits each), a 4 × 4 RGB layout, and a 64-bin RGB histogram, from a 128 px decode. The similarity of 2 signatures is 0.25 × structure (hashes) + 0.75 × layout correlation × common palette. The levels are thresholds: `same` 0.90 (and at most 8 different hash bits), `high` 0.70, `medium` 0.55, `low` 0.40. A dense burst needs `low` and a time gap that fits the rhythm of the series; a sparse burst needs `medium` and no time limit.
+- **Rejected:** Hash distance only - it does not find the example burst without many false groups.
+- **Rejected:** A neural embedding - a model file and a runtime for a first version.
+- **Consequences:** Assumption: the weights and thresholds are estimates from a few example photos. A change of the signature needs a new `ALGO_VERSION`; a change of a threshold needs no new analysis. The comparisons are O(n²) in the worst case.

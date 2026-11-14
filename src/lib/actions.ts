@@ -2,7 +2,7 @@
 // keyboard shortcuts, sidebar and breadcrumb clicks, and native menu events call `runAction`; a
 // control reads `isEnabled` and `blockedReason`. The task rule is generic: it uses only the action
 // category and, for file changes, the target paths.
-import { api, Entry, errorMessage, SortSpec } from "./api";
+import { api, Entry, errorMessage, GroupKey, SortSpec } from "./api";
 import { collectionName, collections, Location } from "./locations";
 import {
   canGoParent,
@@ -24,12 +24,14 @@ import {
   entryPath,
   images,
   infoOpen,
+  pendingAnalysis,
   requestRename,
   requestTrashItems,
   revealSelection,
   selectAll,
   selectedPaths,
   setInfoOpen,
+  setGroup,
   setSort,
   setTileSize,
   tileSize,
@@ -48,6 +50,7 @@ import { busyReason, lockedBy, lockedReason, task } from "./tasks";
 import { toast } from "./toast";
 import { toggleSidebar } from "./ui";
 import { startBadPhotoScan } from "./badPhotos";
+import { startAnalysis } from "./analysis";
 
 export type ActionCategory =
   | "navigation" // changes the location of a window, or opens a window
@@ -92,6 +95,7 @@ export interface ActionArgs {
   "view.reveal": string[] | undefined;
   "view.toggleFavorite": string | null;
   "view.sort": SortSpec;
+  "view.group": GroupKey;
   "view.tileSize": number;
   "file.trashSelection": void;
   "file.trashViewerImage": void;
@@ -103,6 +107,7 @@ export interface ActionArgs {
   "data.clearCache": void;
   "data.removeCollection": string;
   "task.scanBadPhotos": string | null;
+  "task.analyzePhotos": void;
   "task.cancel": void;
 }
 
@@ -260,6 +265,12 @@ const DEFS: { [K in ActionId]: Omit<Action<ActionArgs[K]>, "id"> } = {
     enabled: always,
     run: (s: SortSpec) => setSort(s),
   },
+  "view.group": {
+    label: () => "Group",
+    category: "view",
+    enabled: always,
+    run: (g: GroupKey) => setGroup(g),
+  },
   "view.tileSize": {
     label: () => "Tile Size",
     category: "view",
@@ -359,6 +370,12 @@ const DEFS: { [K in ActionId]: Omit<Action<ActionArgs[K]>, "id"> } = {
     category: "task",
     enabled: (root: string | null) => !!root,
     run: (root: string | null) => startBadPhotoScan(root!),
+  },
+  "task.analyzePhotos": {
+    label: () => "Analyze Photos",
+    category: "task",
+    enabled: () => pendingAnalysis() !== null,
+    run: () => startAnalysis(true),
   },
   "task.cancel": {
     label: () => "Cancel Scan",

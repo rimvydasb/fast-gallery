@@ -31,6 +31,7 @@ const COMMANDS: &[&str] = &[
     "get_task_status",
     "cancel_task",
     "start_scan_bad_photos",
+    "start_analyze_photos",
     "list_collections",
     "list_collection",
     "remove_collection",

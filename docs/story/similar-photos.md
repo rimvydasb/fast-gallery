@@ -7,27 +7,27 @@
 > Please note that you will need to decide the best UX for this new functionality. Existing UX and GUI could be changed
 > if needed.
 
-- [ ] New grouping UX and mechanics are introduced. When user selects grouping, then photos view is divided with
+- [x] New grouping UX and mechanics are introduced. When user selects grouping, then photos view is divided with
   horizontal lines that group photos in one or another way:
-    - [ ] Grouping by date (created, modified, etc.)
-    - [ ] Grouping by size
-    - [ ] Grouping by type
-    - [ ] Grouping by quality (requires scanning as it is done by bad photos pipeline)
-    - [ ] Grouping by similarity (requires scanning)
-- [ ] User is able to group photos **by similarity**. User should be able to select `burst-dense`, `burst-sparse`,
+    - [x] Grouping by date (created, modified, etc.)
+    - [x] Grouping by size
+    - [x] Grouping by type
+    - [x] Grouping by quality (requires scanning as it is done by bad photos pipeline)
+    - [x] Grouping by similarity (requires scanning)
+- [x] User is able to group photos **by similarity**. User should be able to select `burst-dense`, `burst-sparse`,
   `same`, `high`, `medium` and `low` similarity. This
   kind of grouping should not take care of photo name, size or file type.
-    - [ ] Burst (`burst-dense`) - intelligent way checks following photos and tries to identify frequently taken a
+    - [x] Burst (`burst-dense`) - intelligent way checks following photos and tries to identify frequently taken a
       series of photos. Each following photo that is far from time frequency threshold is treated as "another" photo and
       burst serie stops.
-    - [ ] Burst (`burst-sparse`) - similar photos, that follow one after another without any time threshold, are grouped
+    - [x] Burst (`burst-sparse`) - similar photos, that follow one after another without any time threshold, are grouped
       together as Sparse Burst. Each following photo that is not so similar to the cluster is treated as "another" and
       sparse burst is broken.
-    - [ ] Same - exact photos despite format, size and other attributes, are grouped as same.
-    - [ ] High - the whole folder (or scope) is grouped to very similar photos does not matter time taken, size, name,
+    - [x] Same - exact photos despite format, size and other attributes, are grouped as same.
+    - [x] High - the whole folder (or scope) is grouped to very similar photos does not matter time taken, size, name,
       file type or any other attribute.
-    - [ ] Medium - same as high, but less similar photos.
-    - [ ] Low - same as medium, but slightly similar photos.
+    - [x] Medium - same as high, but less similar photos.
+    - [x] Low - same as medium, but slightly similar photos.
 
 Ideas that can be used or not (take them as proposal, not strict requirement):
 
@@ -43,8 +43,8 @@ Ideas that can be used or not (take them as proposal, not strict requirement):
 
 ### Sorting
 
-- [ ] User is able to sort photos **by similarity**
-- [ ] User is able to sort photos **by quality** that is already calculated by bad photos pipeline
+- [x] User is able to sort photos **by similarity**
+- [x] User is able to sort photos **by quality** that is already calculated by bad photos pipeline
 
 ## Other Fixes
 

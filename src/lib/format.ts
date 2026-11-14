@@ -16,6 +16,22 @@ export function formatDate(ms: number): string {
   return dateFmt.format(new Date(ms));
 }
 
+const dayFmt = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "numeric", month: "long", year: "numeric" });
+
+/** The header text of a group: a date group has an ISO date as its label. */
+export function groupLabel(g: { label: string; kind?: string }): string {
+  if (g.kind !== "date") return g.label;
+  const [y, m, d] = g.label.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  if (Number.isNaN(date.getTime())) return g.label;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Math.round((today.getTime() - date.getTime()) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return dayFmt.format(date);
+}
+
 export function formatExposure(s: number): string {
   if (s >= 1) return `${s} s`;
   return `1/${Math.round(1 / s)} s`;

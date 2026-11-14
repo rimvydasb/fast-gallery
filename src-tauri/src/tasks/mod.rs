@@ -17,6 +17,8 @@ const PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 #[serde(rename_all = "camelCase")]
 pub enum TaskKind {
     ScanBadPhotos,
+    /// Quality metrics and similarity signatures for the images of 1 location (grouping, sorting).
+    AnalyzePhotos,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]

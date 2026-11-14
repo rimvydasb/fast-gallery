@@ -1,5 +1,6 @@
 //! DirScanner: directory listing, image detection, and sort order.
 
+pub mod arrange;
 pub mod index;
 pub mod preview;
 
@@ -72,6 +73,10 @@ pub enum SortKey {
     Modified,
     Taken,
     Size,
+    /// By the quality score of the bad photo metrics; needs an analysis (`arrange`).
+    Quality,
+    /// Similar photos side by side; needs an analysis (`arrange`).
+    Similarity,
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
@@ -90,6 +95,8 @@ impl SortSpec {
             SortKey::Modified => "modified",
             SortKey::Taken => "taken",
             SortKey::Size => "size",
+            SortKey::Quality => "quality",
+            SortKey::Similarity => "similarity",
         };
         format!("{k}:{}", if self.desc { "desc" } else { "asc" })
     }
@@ -114,6 +121,9 @@ pub struct Entry {
     /// Badge codes, only in a collection listing, for example `quality.blurry`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub b: Option<Vec<String>>,
+    /// Creation time, ms since epoch. Only for the grouping in the Rust core.
+    #[serde(skip)]
+    pub c: i64,
 }
 
 /// Natural order comparison: digit runs compare as numbers, letters compare case-insensitively (GRID-11).
@@ -164,6 +174,14 @@ fn trim_zeros(s: &[u8]) -> &[u8] {
     &s[k..]
 }
 
+pub fn created_ms(md: &fs::Metadata) -> i64 {
+    md.created()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or_else(|| mtime_ms(md))
+}
+
 pub fn mtime_ms(md: &fs::Metadata) -> i64 {
     md.modified()
         .ok()
@@ -178,7 +196,10 @@ pub fn sort_entries(entries: &mut [Entry], sort: SortSpec) {
     entries.sort_unstable_by(|a, b| {
         b.d.cmp(&a.d).then_with(|| {
             let o = match (sort.key, a.d) {
-                (SortKey::Name, _) | (SortKey::Size, true) => natural_cmp(&a.n, &b.n),
+                // Quality and Similarity: `arrange` orders the images after this sort by name.
+                (SortKey::Name | SortKey::Quality | SortKey::Similarity, _) | (SortKey::Size, true) => {
+                    natural_cmp(&a.n, &b.n)
+                }
                 (SortKey::Modified, _) | (SortKey::Taken, true) => a.m.cmp(&b.m),
                 (SortKey::Taken, false) => a.t.unwrap_or(a.m / 1000).cmp(&b.t.unwrap_or(b.m / 1000)),
                 (SortKey::Size, false) => a.s.cmp(&b.s),
@@ -234,7 +255,7 @@ pub fn read_entries(dir: &Path, opts: &ListOptions) -> std::io::Result<(Vec<Entr
             }
             out.push(Entry { n: name.to_string(), d: true, s: 0, m: mtime_ms(&md), ..Default::default() });
         } else if image && md.is_file() {
-            out.push(Entry { n: name.to_string(), d: false, s: md.len(), m: mtime_ms(&md), ..Default::default() });
+            out.push(Entry { n: name.to_string(), d: false, s: md.len(), m: mtime_ms(&md), c: created_ms(&md), ..Default::default() });
         }
     }
     Ok((out, read))
@@ -263,6 +284,22 @@ pub fn fill_taken(dir: &Path, entries: &mut [Entry], index: &index::PreviewIndex
         rows.push((entries[i].n.clone(), entries[i].m, t));
     }
     index.put_taken(dir, &rows);
+}
+
+/// Fills the date taken of entries that carry their own path (`Entry.p`), from any folders.
+pub fn fill_taken_by_path(entries: &mut Vec<Entry>, index: &index::PreviewIndex) {
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    // The date taken cache is per folder.
+    let mut by_dir: HashMap<PathBuf, Vec<Entry>> = HashMap::new();
+    for e in entries.drain(..) {
+        let dir = Path::new(e.p.as_deref().unwrap_or("/")).parent().unwrap_or(Path::new("/")).to_path_buf();
+        by_dir.entry(dir).or_default().push(e);
+    }
+    for (dir, mut group) in by_dir {
+        fill_taken(&dir, &mut group, index);
+        entries.extend(group);
+    }
 }
 
 /// list_dir: entries of one directory in the grid order.

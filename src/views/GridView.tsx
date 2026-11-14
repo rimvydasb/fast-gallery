@@ -1,17 +1,20 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js";
-import { api } from "../lib/api";
+import { api, GroupInfo } from "../lib/api";
 import {
   cursor,
   editMode,
   entries,
   entryKey,
   entryPath,
+  folderCount,
+  groups,
   loadError,
   navSeq,
   previews,
   requestPreviews,
   selectOnly,
   selectRange,
+  selectSpan,
   selection,
   selectedEntries,
   sort,
@@ -25,14 +28,35 @@ import { runAction } from "../lib/actions";
 import { noteFastScroll, setVisibleRange } from "../lib/thumbQueue";
 import { FolderTile, ImageTile } from "../components/Tile";
 import { openContextMenu } from "../components/ContextMenu";
-import { imageCount } from "../lib/format";
+import { groupLabel, imageCount } from "../lib/format";
+import { task, taskText } from "../lib/tasks";
 
 export const GAP = 14;
 export const PAD = 18;
 export const LABEL = 40;
+/** Height of a group header: the label and the horizontal line. */
+export const HEADER_H = 38;
+
+/**
+ * A run of consecutive entries that the grid lays out as rows: all entries (no grouping), the
+ * folders, or 1 group with a header. Each section starts a new row.
+ */
+interface Section {
+  start: number;
+  count: number;
+  rows: number;
+  /** y of the header, or of the first row if there is no header. */
+  top: number;
+  rowsTop: number;
+  header: GroupInfo | null;
+}
 
 /** Number of columns of the grid, for keyboard navigation (GRID-14). */
 export const [gridCols, setGridCols] = createSignal(1);
+
+let gridMoveImpl: (i: number, dir: -1 | 1) => number = (i, dir) => i + dir;
+/** The index 1 row above (dir = -1) or below the tile at index i; rows do not cross a group as index ± columns. */
+export const gridMove = (i: number, dir: -1 | 1) => gridMoveImpl(i, dir);
 
 let scrollToIndexImpl: (i: number) => void = () => {};
 /** Scrolls the grid so that the tile at index i is visible. */
@@ -46,29 +70,121 @@ export function GridView() {
 
   const rowH = () => tileSize() + LABEL + GAP;
   const cols = createMemo(() => Math.max(1, Math.floor((width() - 2 * PAD + GAP) / (tileSize() + GAP))));
-  const rows = () => Math.ceil(entries().length / cols());
   const offsetX = () => Math.max(PAD, (width() - (cols() * tileSize() + (cols() - 1) * GAP)) / 2);
   createEffect(() => setGridCols(cols()));
 
-  // GRID-04: render only the rows in the viewport and a buffer of 2 rows.
-  const range = createMemo(() => {
+  const layout = createMemo(() => {
+    const n = entries().length;
+    const c = cols();
     const rh = rowH();
-    const first = Math.floor(Math.max(0, scrollTop() - PAD) / rh);
-    const last = Math.floor(Math.max(0, scrollTop() + height() - PAD) / rh);
-    return { first, last };
+    const gs = groups();
+    const fc = folderCount();
+    const secs: Section[] = [];
+    let y = PAD;
+    const push = (start: number, count: number, header: GroupInfo | null) => {
+      if (count <= 0) return;
+      const rows = Math.ceil(count / c);
+      const rowsTop = y + (header ? HEADER_H : 0);
+      secs.push({ start, count, rows, top: y, rowsTop, header });
+      y = rowsTop + rows * rh;
+    };
+    // The groups cover the images exactly; if not (a listing in transition), show no groups.
+    const grouped = gs.length > 0 && gs.reduce((a, g) => a + g.count, 0) === n - fc;
+    if (!grouped) push(0, n, null);
+    else {
+      push(0, fc, null);
+      let start = fc;
+      for (const g of gs) {
+        push(start, g.count, g);
+        start += g.count;
+      }
+    }
+    return { secs, height: y + PAD - GAP };
   });
-  const startIdx = createMemo(() => Math.max(0, range().first - 2) * cols());
-  const endIdx = createMemo(() => Math.min(entries().length, (range().last + 3) * cols()));
-  const visible = createMemo(() => entries().slice(startIdx(), endIdx()));
-  createEffect(() => setVisibleRange(range().first * cols(), (range().last + 1) * cols() - 1));
+
+  /** The section of the entry at index i. */
+  const sectionAt = (i: number): Section | undefined => {
+    const secs = layout().secs;
+    let lo = 0;
+    let hi = secs.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (secs[mid].start <= i) lo = mid;
+      else hi = mid - 1;
+    }
+    return secs[lo];
+  };
+
+  const pos = (i: number) => {
+    const s = sectionAt(i);
+    if (!s) return { x: 0, y: 0 };
+    const local = i - s.start;
+    const c = cols();
+    return { x: offsetX() + (local % c) * (tileSize() + GAP), y: s.rowsTop + Math.floor(local / c) * rowH() };
+  };
+
+  /** The entries of the rows between y = t0 and y = t1: [first index, end index). */
+  const span = (t0: number, t1: number): [number, number] => {
+    const c = cols();
+    const rh = rowH();
+    let first = -1;
+    let end = 0;
+    for (const s of layout().secs) {
+      if (s.rowsTop + s.rows * rh <= t0) continue;
+      if (s.top >= t1) break;
+      const r0 = Math.max(0, Math.floor((t0 - s.rowsTop) / rh));
+      const r1 = Math.min(s.rows - 1, Math.floor((t1 - s.rowsTop) / rh));
+      if (r1 < r0) continue;
+      if (first < 0) first = s.start + r0 * c;
+      end = Math.min(s.start + s.count, s.start + (r1 + 1) * c);
+    }
+    return first < 0 ? [0, 0] : [first, end];
+  };
+
+  // GRID-04: render only the rows in the viewport and a buffer of 2 rows.
+  const inView = createMemo(() => span(scrollTop(), scrollTop() + height()), undefined, {
+    equals: (a, b) => a[0] === b[0] && a[1] === b[1],
+  });
+  const buffered = createMemo(() => span(scrollTop() - 2 * rowH(), scrollTop() + height() + 2 * rowH()), undefined, {
+    equals: (a, b) => a[0] === b[0] && a[1] === b[1],
+  });
+  const startIdx = () => buffered()[0];
+  const visible = createMemo(() => entries().slice(buffered()[0], buffered()[1]));
+  const visibleHeaders = createMemo(() => {
+    const t0 = scrollTop() - 2 * rowH();
+    const t1 = scrollTop() + height() + 2 * rowH();
+    return layout().secs.filter((s) => s.header && s.top + HEADER_H > t0 && s.top < t1);
+  });
+  createEffect(() => setVisibleRange(inView()[0], inView()[1] - 1));
 
   scrollToIndexImpl = (i: number) => {
     if (i < 0) return;
-    const row = Math.floor(i / cols());
-    const top = PAD + row * rowH();
-    const bottom = top + rowH() - GAP;
+    const s = sectionAt(i);
+    if (!s) return;
+    const row = Math.floor((i - s.start) / cols());
+    // The first row of a group scrolls its header into view too.
+    const top = row === 0 ? s.top : s.rowsTop + row * rowH();
+    const bottom = s.rowsTop + (row + 1) * rowH() - GAP;
     if (top < scroller.scrollTop) scroller.scrollTop = top - PAD;
     else if (bottom > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = bottom - scroller.clientHeight + PAD;
+  };
+
+  gridMoveImpl = (i: number, dir: -1 | 1) => {
+    const secs = layout().secs;
+    const s = sectionAt(i);
+    if (i < 0 || !s) return i + dir;
+    const c = cols();
+    const col = (i - s.start) % c;
+    const row = Math.floor((i - s.start) / c);
+    const k = secs.indexOf(s);
+    if (dir > 0) {
+      if (row + 1 < s.rows) return Math.min(s.start + (row + 1) * c + col, s.start + s.count - 1);
+      const next = secs[k + 1];
+      return next ? Math.min(next.start + col, next.start + next.count - 1) : i;
+    }
+    if (row > 0) return s.start + (row - 1) * c + col;
+    const prev = secs[k - 1];
+    return prev ? Math.min(prev.start + (prev.rows - 1) * c + col, prev.start + prev.count - 1) : i;
   };
 
   onMount(() => {
@@ -115,10 +231,7 @@ export function GridView() {
       const e = untrack(entries);
       const folders: number[] = [];
       for (let i = 0; i < e.length && e[i].d; i++) folders.push(i);
-      const { first, last } = untrack(range);
-      const c = untrack(cols);
-      const lo = first * c;
-      const hi = (last + 1) * c;
+      const [lo, hi] = untrack(inView);
       const visibleFirst = [...folders.filter((i) => i >= lo && i < hi), ...folders.filter((i) => i < lo || i >= hi)];
       requestPreviews(visibleFirst.map((i) => entryPath(e[i])));
     }),
@@ -187,12 +300,49 @@ export function GridView() {
       }}
     >
       <Show when={!loadError()}>
-        <div class="grid-canvas" style={{ height: `${rows() * rowH() + PAD * 2 - GAP}px` }}>
+        <div class="grid-canvas" style={{ height: `${layout().height}px` }}>
+          <For each={visibleHeaders()}>
+            {(s) => (
+              <div
+                class="group-header"
+                style={{
+                  transform: `translate(${offsetX()}px, ${s.top}px)`,
+                  width: `${cols() * tileSize() + (cols() - 1) * GAP}px`,
+                  height: `${HEADER_H - 6}px`,
+                }}
+              >
+                <button
+                  class="group-title"
+                  title="Select the photos of this group"
+                  tabIndex={-1}
+                  onClick={() => {
+                    scroller.focus({ preventScroll: true });
+                    selectSpan(s.start, s.start + s.count - 1);
+                  }}
+                >
+                  {groupLabel(s.header!)}
+                </button>
+                <span class="group-count">{s.count.toLocaleString()}</span>
+                <span class="group-line" />
+                <Show when={s.header!.kind === "missing"}>
+                  <Show
+                    when={task()?.kind === "analyzePhotos" ? task() : null}
+                    fallback={
+                      <button class="group-action" tabIndex={-1} onClick={() => runAction("task.analyzePhotos")}>
+                        Analyze
+                      </button>
+                    }
+                  >
+                    {(t) => <span class="group-note">{taskText(t())}</span>}
+                  </Show>
+                </Show>
+              </div>
+            )}
+          </For>
           <For each={visible()}>
             {(entry, i) => {
               const idx = () => startIdx() + i();
-              const x = () => offsetX() + (idx() % cols()) * (tileSize() + GAP);
-              const y = () => PAD + Math.floor(idx() / cols()) * rowH();
+              const at = createMemo(() => pos(idx()));
               const p = entryPath(entry);
               const selected = () => selection().has(entryKey(entry));
               return (
@@ -208,7 +358,7 @@ export function GridView() {
                       : `Image ${entry.n}`
                   }
                   style={{
-                    transform: `translate(${x()}px, ${y()}px)`,
+                    transform: `translate(${at().x}px, ${at().y}px)`,
                     width: `${tileSize()}px`,
                     height: `${tileSize() + LABEL}px`,
                   }}

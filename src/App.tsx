@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -11,6 +11,7 @@ import {
   images,
   infoOpen,
   loadError,
+  pendingAnalysis,
   selectedEntries,
   setEditMode,
   setSettings,
@@ -21,7 +22,8 @@ import {
 import { location, navigate, path, reload } from "./lib/navigation";
 import { setCollections } from "./lib/locations";
 import { runAction } from "./lib/actions";
-import { initTasks } from "./lib/tasks";
+import { initTasks, task } from "./lib/tasks";
+import { onAnalysisDone, startAnalysis } from "./lib/analysis";
 import { onBadPhotoScanDone } from "./lib/badPhotos";
 import { onKeyDown } from "./lib/keyboard";
 import { sidebarCollapsed } from "./lib/ui";
@@ -67,7 +69,10 @@ export function App() {
       listen("menu-open-folder", () => runAction("nav.openFolderDialog")),
       listen<string>("open-path", (e) => runAction("nav.openPath", e.payload)),
       // The busy state of all windows; the source window opens the scan result (QUAL-12).
-      initTasks((d) => onBadPhotoScanDone(d, label)).then((ls) => () => ls.forEach((u) => u())),
+      initTasks((d) => {
+        onBadPhotoScanDone(d, label);
+        onAnalysisDone(d, label);
+      }).then((ls) => () => ls.forEach((u) => u())),
       // QUAL-20: collections are shared by all windows; a shown collection is listed again.
       listen<CollectionSummary[]>("collections-changed", (e) => {
         setCollections(e.payload);
@@ -98,6 +103,12 @@ export function App() {
     unlisten.push(...listeners);
     await Promise.all([start, shown]);
     if (loadError()?.kind === "notFound" && path() !== home) navigate(home, { push: false });
+  });
+
+  // A sort or a grouping that reads analysis results starts the analysis of the location by itself,
+  // when no other task runs.
+  createEffect(() => {
+    if (pendingAnalysis() && !task()) startAnalysis();
   });
 
   onCleanup(() => {

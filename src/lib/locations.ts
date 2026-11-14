@@ -1,7 +1,7 @@
 // Locations (D5): what a window shows. A disk folder or an in-memory collection, each behind a
 // `LocationProvider`. Navigation, the grid, and the action registry use only these interfaces.
 import { createSignal } from "solid-js";
-import { api, baseName, CollectionSummary, DirListing, SortSpec } from "./api";
+import { api, baseName, CollectionSummary, DirListing, GroupKey, SortSpec } from "./api";
 import { collectionEmptyText } from "./badges";
 
 export type DiskLocation = { kind: "disk"; path: string };
@@ -34,8 +34,8 @@ export interface Crumb {
 }
 
 export interface LocationProvider<L extends Location> {
-  /** Entries in grid order. */
-  list(loc: L, sort: SortSpec, showHidden: boolean): Promise<DirListing>;
+  /** Entries in grid order, with the groups of `group`. */
+  list(loc: L, sort: SortSpec, showHidden: boolean, group: GroupKey): Promise<DirListing>;
   /** Window title. */
   title(loc: L): string;
   /** Breadcrumb components, each with a target Location. */
@@ -74,7 +74,7 @@ export function collectionName(id: string): string {
 }
 
 export const DiskProvider: LocationProvider<DiskLocation> = {
-  list: (loc, sort, showHidden) => api.listDir(loc.path, sort, showHidden),
+  list: (loc, sort, showHidden, group) => api.listDir(loc.path, sort, showHidden, group),
   title: (loc) => baseName(loc.path) || "Fast Gallery",
   crumbs(loc) {
     const segs = loc.path.split("/").filter(Boolean);
@@ -93,7 +93,7 @@ export const DiskProvider: LocationProvider<DiskLocation> = {
 };
 
 export const CollectionProvider: LocationProvider<CollectionLocation> = {
-  list: (loc, sort) => api.listCollection(loc.id, sort),
+  list: (loc, sort, _showHidden, group) => api.listCollection(loc.id, sort, group),
   title: (loc) => collectionName(loc.id),
   crumbs: (loc) => [
     { label: "Collections", title: "Collections", target: null },

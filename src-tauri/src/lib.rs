@@ -9,6 +9,7 @@ pub mod protocols;
 pub mod quality;
 pub mod scan;
 pub mod screenshot;
+pub mod similarity;
 pub mod tasks;
 pub mod thumbs;
 pub mod watch;
@@ -311,6 +312,7 @@ pub fn run() {
             commands::tasks::cancel_task,
             commands::quality::start_scan_bad_photos,
             commands::quality::get_quality,
+            commands::analyze::start_analyze_photos,
             commands::collections::list_collections,
             commands::collections::list_collection,
             commands::collections::remove_collection,

@@ -21,6 +21,8 @@ const MAX_FOLDER_PREFS: usize = 2000;
 pub struct FolderPrefs {
     pub sort: SortSpec,
     pub tile_size: u32,
+    #[serde(default)]
+    pub group: crate::scan::arrange::GroupKey,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

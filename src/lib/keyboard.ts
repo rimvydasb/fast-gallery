@@ -19,7 +19,7 @@ import {
 import { caps, path } from "./navigation";
 import { runAction } from "./actions";
 import { scanCapInfo } from "./badPhotos";
-import { gridCols, scrollToIndex } from "../views/GridView";
+import { gridMove, scrollToIndex } from "../views/GridView";
 import * as viewer from "../views/ViewerView";
 import { contextMenuOpen, openContextMenu } from "../components/ContextMenu";
 
@@ -111,10 +111,10 @@ function gridKey(e: KeyboardEvent): boolean {
       moveCursor(1, e.shiftKey);
       return true;
     case "ArrowUp":
-      moveCursor(-gridCols(), e.shiftKey);
+      moveCursor(gridMove(cursor(), -1) - cursor(), e.shiftKey);
       return true;
     case "ArrowDown":
-      moveCursor(gridCols(), e.shiftKey);
+      moveCursor(gridMove(cursor(), 1) - cursor(), e.shiftKey);
       return true;
     case "Home":
       moveCursor(-entries().length, e.shiftKey);

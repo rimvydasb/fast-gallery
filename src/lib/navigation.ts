@@ -4,15 +4,17 @@ import { batch, createSignal } from "solid-js";
 import { api, baseName, errorMessage, isCmdError, parentPath } from "./api";
 import { Location, locationKey, NO_CAPS, providerFor, sameLocation } from "./locations";
 import {
+  applyListing,
   cursor,
   entries,
+  group,
+  setGroupSignal,
   entryKey,
   folderCount,
   images,
   selection,
   setAnchor,
   setCursor,
-  setEntries,
   setLoadError,
   setLoading,
   setNavSeq,
@@ -90,10 +92,12 @@ export async function navigate(t: Location | string, opts: NavOptions = {}) {
   const prefs = c.folderPrefs ? s?.folderPrefs[locationKey(target)] : undefined;
   const nextSort = prefs?.sort ?? s?.defaultSort ?? sort();
   const nextTile = prefs?.tileSize ?? s?.defaultTileSize ?? tileSize();
+  // The grouping is per location; a location without stored prefs has none.
+  const nextGroup = prefs?.group ?? "none";
   const seq = ++listSeq;
   setLoading(true);
   try {
-    const listing = await provider.list(target, nextSort, showHidden());
+    const listing = await provider.list(target, nextSort, showHidden(), nextGroup);
     if (seq !== listSeq) return;
     clearQueue();
     const loc: Location = target.kind === "disk" ? { kind: "disk", path: listing.path } : target;
@@ -102,7 +106,8 @@ export async function navigate(t: Location | string, opts: NavOptions = {}) {
       setLocation(loc);
       setSortSignal(nextSort);
       setTileSizeSignal(nextTile);
-      setEntries(listing.entries);
+      setGroupSignal(nextGroup);
+      applyListing(listing);
       setPreviews(reconcile({}));
       setLoadError(null);
       setViewerIndex(null);
@@ -121,7 +126,7 @@ export async function navigate(t: Location | string, opts: NavOptions = {}) {
     batch(() => {
       pushHistory(prev, target, push);
       setLocation(target);
-      setEntries([]);
+      applyListing({ path: "", entries: [] });
       setSelection(new Set<string>());
       setLoadError(isCmdError(e) ? e : { kind: "other", message: errorMessage(e) });
       setNavSeq(navSeq() + 1);
@@ -137,7 +142,7 @@ export async function reload() {
   if (!loc) return;
   const seq = ++listSeq;
   try {
-    const listing = await providerFor(loc).list(loc, sort(), showHidden());
+    const listing = await providerFor(loc).list(loc, sort(), showHidden(), group());
     if (seq !== listSeq || !sameLocation(location(), loc)) return;
     const viewing = viewerIndex();
     const viewedKey = viewing !== null ? images()[viewing] && entryKey(images()[viewing]) : undefined;
@@ -146,7 +151,7 @@ export async function reload() {
       const sel = new Set([...selection()].filter((k) => keys.has(k)));
       const cur = entries()[cursor()];
       const cursorKey = cur ? entryKey(cur) : undefined;
-      setEntries(listing.entries);
+      applyListing(listing);
       setSelection(sel);
       setCursor(cursorKey ? listing.entries.findIndex((e) => entryKey(e) === cursorKey) : -1);
       setLoadError(null);

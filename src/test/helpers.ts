@@ -28,6 +28,8 @@ export const apiMock = () => ({
   removeCollection: vi.fn(),
   getTaskStatus: vi.fn(),
   homeDir: vi.fn(),
+  setFolderPrefs: vi.fn(),
+  startAnalyzePhotos: vi.fn(),
 });
 
 /** A running scan task with a lock on `root`. */

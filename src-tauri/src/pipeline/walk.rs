@@ -22,6 +22,50 @@ pub struct WalkItem {
     pub mtime: i64,
 }
 
+/// The images that `run_pipeline` reads: a tree walk or a fixed list.
+pub trait ImageSource: Iterator<Item = WalkItem> {
+    /// The number of images for the progress total, if known before the end.
+    fn total(&self) -> Option<usize>;
+    /// True if the source has more images than it gives.
+    fn is_capped(&self) -> bool {
+        false
+    }
+}
+
+/// A fixed list of images, for example the images of 1 folder or of a collection.
+pub struct ListSource {
+    items: std::vec::IntoIter<WalkItem>,
+    total: usize,
+}
+
+impl ListSource {
+    pub fn new(items: Vec<WalkItem>) -> Self {
+        Self { total: items.len(), items: items.into_iter() }
+    }
+}
+
+impl Iterator for ListSource {
+    type Item = WalkItem;
+    fn next(&mut self) -> Option<WalkItem> {
+        self.items.next()
+    }
+}
+
+impl ImageSource for ListSource {
+    fn total(&self) -> Option<usize> {
+        Some(self.total)
+    }
+}
+
+impl ImageSource for TreeWalker {
+    fn total(&self) -> Option<usize> {
+        self.max_images()
+    }
+    fn is_capped(&self) -> bool {
+        self.capped()
+    }
+}
+
 pub struct TreeWalker {
     opts: WalkOptions,
     /// Folders still to read, with their depth; the top is the next one.

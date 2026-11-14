@@ -43,6 +43,7 @@
     "allow-get-task-status",
     "allow-cancel-task",
     "allow-start-scan-bad-photos",
+    "allow-start-analyze-photos",
     "allow-list-collections",
     "allow-list-collection",
     "allow-remove-collection",

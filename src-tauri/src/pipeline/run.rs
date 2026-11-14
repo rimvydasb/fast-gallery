@@ -8,7 +8,7 @@ use serde::Serialize;
 use super::analyzer::{ImageAnalyzer, ResultSink};
 use super::cache::AnalysisCache;
 use super::input::decode_input;
-use super::walk::{TreeWalker, WalkItem};
+use super::walk::{ImageSource, WalkItem};
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
 pub struct PipelineSummary {
@@ -55,9 +55,9 @@ struct Done<O> {
 
 /// Runs `analyzer` on each image of the walk. Cached results are reused; other images are decoded
 /// and analyzed in the decode pool, with at most `in_flight` jobs at a time. `sink.accept` is called
-/// in walk order. The total for the progress is `max_images` (or 0 without a cap).
+/// in walk order. The total for the progress is `ImageSource::total` (or 0 if not known).
 pub fn run_pipeline<A, S>(
-    mut walker: TreeWalker,
+    mut walker: impl ImageSource,
     analyzer: Arc<A>,
     mut sink: S,
     cache: &mut AnalysisCache,
@@ -68,7 +68,7 @@ where
     A: ImageAnalyzer,
     S: ResultSink<A::Output>,
 {
-    let total = walker.max_images().unwrap_or(0) as u32;
+    let total = walker.total().unwrap_or(0) as u32;
     let limit = in_flight.max(1);
     let spec = analyzer.input();
     let (tx, rx) = crossbeam_channel::unbounded::<Done<A::Output>>();
@@ -139,7 +139,7 @@ where
         deliver(d, &mut ready, &mut next_out, &mut sum, &mut sink, cache);
     }
     cache.flush();
-    sum.capped = walker.capped();
+    sum.capped = walker.is_capped();
     sum.cancelled |= ctx.is_cancelled();
     sink.finish(&sum)
 }
@@ -148,7 +148,7 @@ where
 mod tests {
     use super::*;
     use crate::pipeline::input::{AnalysisInput, InputSpec};
-    use crate::pipeline::walk::WalkOptions;
+    use crate::pipeline::walk::{TreeWalker, WalkOptions};
     use crate::scan::index::PreviewIndex;
     use std::path::Path;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

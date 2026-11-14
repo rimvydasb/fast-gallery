@@ -8,6 +8,10 @@ import {
   Entry,
   errorMessage,
   FolderPreview,
+  DirListing,
+  GroupInfo,
+  GroupKey,
+  AnalysisNeed,
   joinPath,
   parentPath,
   Settings,
@@ -25,6 +29,12 @@ export const MAX_TILE = 512;
 export const [settings, setSettings] = createSignal<Settings | null>(null);
 export const [entries, setEntries] = createSignal<Entry[]>([]);
 export const [sort, setSortSignal] = createSignal<SortSpec>({ key: "name", desc: false });
+/** The grouping of the grid (per location, like the sort). */
+export const [group, setGroupSignal] = createSignal<GroupKey>("none");
+/** The groups of the current listing: consecutive ranges of `images()`. Empty without a grouping. */
+export const [groups, setGroups] = createSignal<GroupInfo[]>([]);
+/** Images of the current listing that wait for an analysis, and which analysis. */
+export const [pendingAnalysis, setPendingAnalysis] = createSignal<{ missing: number; need: AnalysisNeed } | null>(null);
 export const [tileSize, setTileSizeSignal] = createSignal(180);
 export const [showHidden, setShowHidden] = createSignal(false);
 export const [selection, setSelection] = createSignal<ReadonlySet<string>>(new Set());
@@ -49,6 +59,15 @@ export const folderCount = createMemo(() => {
 });
 export const images = createMemo(() => entries().slice(folderCount()));
 
+/** Shows a listing: the entries, their groups, and the analysis that the listing still needs. */
+export function applyListing(l: DirListing) {
+  batch(() => {
+    setEntries(l.entries);
+    setGroups(l.groups ?? []);
+    setPendingAnalysis(l.need && l.missing ? { missing: l.missing, need: l.need } : null);
+  });
+}
+
 /** The absolute path of an entry: `Entry.p` in a collection, else the current folder and the name. */
 export const entryPath = (e: Entry) => e.p ?? joinPath(path() ?? "/", e.n);
 
@@ -69,7 +88,7 @@ export function selectedPaths(): string[] {
 
 function savePrefs() {
   const l = location();
-  if (l && caps().folderPrefs) api.setFolderPrefs(locationKey(l), { sort: sort(), tileSize: tileSize() });
+  if (l && caps().folderPrefs) api.setFolderPrefs(locationKey(l), { sort: sort(), tileSize: tileSize(), group: group() });
 }
 
 let prefsTimer: number | undefined;
@@ -82,6 +101,13 @@ export function setSort(s: SortSpec) {
   if (sortKeyString(s) === sortKeyString(sort())) return;
   setSortSignal(s);
   setPreviews(reconcile({}));
+  savePrefs();
+  reload();
+}
+
+export function setGroup(g: GroupKey) {
+  if (g === group()) return;
+  setGroupSignal(g);
   savePrefs();
   reload();
 }
@@ -158,6 +184,18 @@ export function selectRange(index: number, additive = false) {
   batch(() => {
     setSelection(next);
     setCursor(index);
+  });
+}
+
+/** Selects the entries from index `lo` to `hi`, for example the images of 1 group. */
+export function selectSpan(lo: number, hi: number) {
+  const e = entries();
+  const next = new Set<string>();
+  for (let i = Math.max(0, lo); i <= hi && i < e.length; i++) next.add(entryKey(e[i]));
+  batch(() => {
+    setSelection(next);
+    setAnchor(lo);
+    setCursor(lo);
   });
 }
 

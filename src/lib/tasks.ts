@@ -9,6 +9,7 @@ export const [task, setTask] = createSignal<TaskStatus | null>(null);
 /** Text for the toolbar tooltip and the status bar, by task kind. */
 const TASK_LABELS: Record<TaskKind, string> = {
   scanBadPhotos: "Scanning for bad photos",
+  analyzePhotos: "Analyzing photos",
 };
 
 export const taskLabel = (t: TaskStatus) => TASK_LABELS[t.kind] ?? "Working";

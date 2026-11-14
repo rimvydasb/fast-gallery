@@ -1,7 +1,35 @@
 // Typed wrappers for the Tauri commands and the image protocols.
 import { invoke } from "@tauri-apps/api/core";
 
-export type SortKey = "name" | "modified" | "taken" | "size";
+export type SortKey = "name" | "modified" | "taken" | "size" | "quality" | "similarity";
+
+/** How the grid divides the images into groups. The last 6 group by similarity. */
+export type GroupKey =
+  | "none"
+  | "taken"
+  | "modified"
+  | "created"
+  | "size"
+  | "type"
+  | "quality"
+  | "burstDense"
+  | "burstSparse"
+  | "same"
+  | "high"
+  | "medium"
+  | "low";
+
+/** One group of the grid: `count` consecutive images of the listing. */
+export interface GroupInfo {
+  /** The header text; an ISO date for `kind` = "date". */
+  label: string;
+  count: number;
+  /** "date": format the label. "rest": images in no cluster. "missing": images without an analysis. */
+  kind?: "date" | "rest" | "missing";
+}
+
+/** The analysis that a sort or a grouping reads. */
+export type AnalysisNeed = "quality" | "similarity" | "both";
 export interface SortSpec {
   key: SortKey;
   desc: boolean;
@@ -24,6 +52,11 @@ export interface Entry {
 export interface DirListing {
   path: string;
   entries: Entry[];
+  /** The groups of the images, in order; absent without a grouping. */
+  groups?: GroupInfo[];
+  /** Images without a result of the analysis in `need`. */
+  missing?: number;
+  need?: AnalysisNeed;
 }
 
 export interface PreviewImage {
@@ -43,6 +76,7 @@ export interface FolderPreview {
 export interface FolderPrefs {
   sort: SortSpec;
   tileSize: number;
+  group?: GroupKey;
 }
 
 export interface Settings {
@@ -64,7 +98,7 @@ export interface Settings {
 
 export type QualitySensitivity = "low" | "medium" | "high";
 
-export type TaskKind = "scanBadPhotos";
+export type TaskKind = "scanBadPhotos" | "analyzePhotos";
 
 export interface TaskStatus {
   id: number;
@@ -169,8 +203,8 @@ export function errorMessage(e: unknown): string {
 export const sortKeyString = (s: SortSpec) => `${s.key}:${s.desc ? "desc" : "asc"}`;
 
 export const api = {
-  listDir: (path: string, sort: SortSpec, showHidden: boolean) =>
-    invoke<DirListing>("list_dir", { path, sort, showHidden }),
+  listDir: (path: string, sort: SortSpec, showHidden: boolean, group: GroupKey = "none") =>
+    invoke<DirListing>("list_dir", { path, sort, showHidden, group }),
   getFolderPreviews: (folders: string[], sort: SortSpec) =>
     invoke<FolderPreview[]>("get_folder_previews", { folders, sort }),
   refreshFolderPreviews: (folders: string[], sort: SortSpec) =>
@@ -203,7 +237,11 @@ export const api = {
   cancelTask: () => invoke<void>("cancel_task"),
   startScanBadPhotos: (root: string) => invoke<TaskStatus>("start_scan_bad_photos", { root }),
   listCollections: () => invoke<CollectionSummary[]>("list_collections"),
-  listCollection: (id: string, sort: SortSpec) => invoke<DirListing>("list_collection", { id, sort }),
+  listCollection: (id: string, sort: SortSpec, group: GroupKey = "none") =>
+    invoke<DirListing>("list_collection", { id, sort, group }),
+  /** `location` is a `locationKey`: a folder path or "collection:<id>". */
+  startAnalyzePhotos: (location: string, need: AnalysisNeed, showHidden: boolean) =>
+    invoke<TaskStatus>("start_analyze_photos", { location, need, showHidden }),
   removeCollection: (id: string) => invoke<void>("remove_collection", { id }),
   getQuality: (path: string) => invoke<QualityInfo | null>("get_quality", { path }),
 };

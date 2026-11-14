@@ -1,5 +1,5 @@
-import { SortKey } from "../lib/api";
-import { editMode, infoOpen, sort } from "../lib/store";
+import { GroupKey, SortKey } from "../lib/api";
+import { editMode, group, infoOpen, sort } from "../lib/store";
 import { location } from "../lib/navigation";
 import { collections } from "../lib/locations";
 import { ActionId, actionLabel, blockedReason, isEnabled, runAction } from "../lib/actions";
@@ -13,6 +13,39 @@ const SORTS: { key: SortKey; label: string }[] = [
   { key: "modified", label: "Date Modified" },
   { key: "taken", label: "Date Taken" },
   { key: "size", label: "Size" },
+  { key: "quality", label: "Quality" },
+  { key: "similarity", label: "Similarity" },
+];
+
+/** The groupings of the grid. Quality and the similarity groups need an analysis of the photos. */
+const GROUPS: { label: string; items: { key: GroupKey; label: string }[] }[] = [
+  {
+    label: "Date",
+    items: [
+      { key: "taken", label: "Date Taken" },
+      { key: "modified", label: "Date Modified" },
+      { key: "created", label: "Date Created" },
+    ],
+  },
+  {
+    label: "File",
+    items: [
+      { key: "size", label: "Size" },
+      { key: "type", label: "Type" },
+    ],
+  },
+  { label: "Photo", items: [{ key: "quality", label: "Quality" }] },
+  {
+    label: "Similarity",
+    items: [
+      { key: "burstDense", label: "Dense Bursts" },
+      { key: "burstSparse", label: "Sparse Bursts" },
+      { key: "same", label: "Same Photos" },
+      { key: "high", label: "High Similarity" },
+      { key: "medium", label: "Medium Similarity" },
+      { key: "low", label: "Low Similarity" },
+    ],
+  },
 ];
 
 export function Icon(props: { d: string }) {
@@ -101,8 +134,21 @@ export function Toolbar() {
       </button>
       <Breadcrumbs />
       <div class="tb-spacer" data-tauri-drag-region />
+      <label class="sort-control" title="Divide the photos into groups">
+        <span class="control-caption">Group</span>
+        <select value={group()} onChange={(e) => runAction("view.group", e.currentTarget.value as GroupKey)}>
+          <option value="none">None</option>
+          {GROUPS.map((g) => (
+            <optgroup label={g.label}>
+              {g.items.map((i) => (
+                <option value={i.key}>{i.label}</option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+      </label>
       <label class="sort-control" title="Sort order">
-        <span class="visually-hidden">Sort by</span>
+        <span class="control-caption">Sort</span>
         <select value={sort().key} onChange={(e) => runAction("view.sort", { ...sort(), key: e.currentTarget.value as SortKey })}>
           {SORTS.map((s) => (
             <option value={s.key}>{s.label}</option>

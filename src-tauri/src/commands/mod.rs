@@ -1,6 +1,7 @@
 //! Tauri command handlers. Commands that touch the file system are `async` and run their work off
 //! the main thread (PERF-11).
 
+pub mod analyze;
 pub mod collections;
 pub mod edit;
 pub mod files;
@@ -16,6 +17,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
+use crate::scan::arrange::{self, Group, GroupKey};
 use crate::scan::{self, preview, preview::FolderPreview, Entry, SortSpec};
 use crate::AppState;
 
@@ -66,6 +68,25 @@ pub(crate) async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + '
 pub struct DirListing {
     pub path: String,
     pub entries: Vec<Entry>,
+    /// The groups of the images, in order; empty without a grouping.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<Group>,
+    /// Images without a result of the analysis that the sort or the grouping reads.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub missing: u32,
+    /// That analysis: "quality", "similarity", or "both".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub need: Option<&'static str>,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+impl DirListing {
+    pub(crate) fn new(path: String, l: arrange::Listing) -> Self {
+        Self { path, entries: l.entries, groups: l.groups, missing: l.missing, need: l.need }
+    }
 }
 
 /// Lists one directory in the grid order and starts to watch it (FSW-01).
@@ -76,18 +97,23 @@ pub async fn list_dir(
     path: String,
     sort: SortSpec,
     show_hidden: bool,
+    group: Option<GroupKey>,
 ) -> CmdResult<DirListing> {
     let index = Arc::clone(&state.previews.index);
+    let th = crate::quality::Thresholds::for_sensitivity(state.settings.get().quality_sensitivity);
     let p = PathBuf::from(&path);
-    let entries = blocking({
+    let listing = blocking({
         let p = p.clone();
-        move || scan::list_dir(&p, sort, show_hidden, &index).map_err(|e| CmdError::io(&p, &e))
+        move || {
+            arrange::list_disk(&p, sort, show_hidden, group.unwrap_or_default(), &index, &th)
+                .map_err(|e| CmdError::io(&p, &e))
+        }
     })
     .await??;
     state.watcher.watch(window.app_handle(), window.label(), &p, Arc::clone(&state.thumbs), Arc::clone(&state.previews.index));
     state.settings.visit(&path);
     crate::trace("list_dir done");
-    Ok(DirListing { path, entries })
+    Ok(DirListing::new(path, listing))
 }
 
 fn limits(state: &AppState) -> preview::Limits {

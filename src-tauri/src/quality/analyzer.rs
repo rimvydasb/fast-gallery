@@ -28,6 +28,18 @@ pub struct QualityMetrics {
     pub clip_bright: f64,
 }
 
+impl QualityMetrics {
+    /// A quality score from 0 (bad) to 100, for the sort by quality: 60 % sharpness (log scale of
+    /// `lap_var_local`), 20 % contrast, 20 % exposure (no clipped shadows or highlights).
+    /// Assumption: the weights are first estimates.
+    pub fn score(&self) -> f64 {
+        let sharp = ((1.0 + self.lap_var_local.max(0.0)).ln() / 1501f64.ln()).clamp(0.0, 1.0);
+        let contrast = (self.std_luma / 50.0).clamp(0.0, 1.0);
+        let exposure = 1.0 - self.clip_dark.max(self.clip_bright).clamp(0.0, 1.0);
+        100.0 * (0.6 * sharp + 0.2 * contrast + 0.2 * exposure)
+    }
+}
+
 #[derive(Default)]
 pub struct QualityAnalyzer;
 
