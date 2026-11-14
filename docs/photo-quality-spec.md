@@ -5,11 +5,13 @@
 Photo quality detection finds bad photos in a folder tree: blurry, underexposed, overexposed, and low-contrast
 images. The user starts a scan of a folder and all its subfolders from the context menu.
 
-The scan stops at the scan cap: 200 photos by default, set in Settings. At the end, the app opens the in-memory
-collection "Bad photos" as a virtual folder.
+The scan starts at once, with no dialog. It stops at the scan cap from Settings (default 200 photos).
 
-While the scan runs, the app blocks navigation and all actions that change files. The user reviews the bad photos in
-the virtual folder and trashes them in edit mode (EDIT-01 to EDIT-07).
+At the end, the app opens the in-memory collection "Bad photos" as a virtual folder.
+
+While the scan runs, the app locks the scanned folder tree against file changes. The user can browse all folders.
+
+The user reviews the bad photos in the virtual folder and trashes them in edit mode (EDIT-01 to EDIT-07).
 
 Phase 1 uses only deterministic algorithms, with no machine learning model and no new dependency. The algorithms are
 Laplacian variance, the Tenengrad gradient, the Brenner gradient, and a luminance histogram.
@@ -22,7 +24,7 @@ This feature introduces 4 parts that other features will reuse:
 
 | Part                 | Layer    | Purpose                                                                   |
 |----------------------|----------|---------------------------------------------------------------------------|
-| `TaskRunner`         | Rust     | Runs 1 exclusive background task for the app, with progress and cancel    |
+| `TaskRunner`         | Rust     | Runs 1 background task, with a folder lock, progress, and cancel          |
 | Image scan pipeline  | Rust     | Walks a folder tree and runs an `ImageAnalyzer` on each photo, with cache |
 | Locations            | Frontend | Disk folders and virtual folders behind one `LocationProvider` interface  |
 | Action registry      | Frontend | One place that defines each user action and decides if it is enabled     |
@@ -44,6 +46,7 @@ The keywords `MUST`, `MUST NOT`, `SHOULD`, and `MAY` have the meaning from RFC 2
 - **Location:** the content source of a window: a disk folder or a collection.
 - **Virtual folder:** the grid view of a collection location. It has no folder on disk.
 - **Busy state:** the state of the app while a task runs.
+- **Task lock:** the folder trees that a running task locks against file changes. A scan locks its scan root.
 
 ## Context and Gap
 
@@ -54,24 +57,24 @@ The keywords `MUST`, `MUST NOT`, `SHOULD`, and `MAY` have the meaning from RFC 2
 | `FolderPreviewService` (`src-tauri/src/scan/preview.rs`)   | Has its own depth-first walk with the skip rules FPV-09 and FPV-10   | Keeps its walk in this feature; moves to `TreeWalker` later (see Future Improvements) |
 | `PreviewIndex` (`src-tauri/src/scan/index.rs`)             | SQLite tables `previews` and `taken`                                | New generic table `analysis`                                   |
 | `pools::decode()` (`src-tauri/src/pools.rs`)               | Thread pool for decode, one thread per performance core (THM-12)     | Runs the analysis jobs, with a limit on jobs in flight         |
-| `EditModeState` (`src-tauri/src/commands/edit.rs`)         | Rejects `trash_files` while edit mode is off (EDIT-05)               | `trash_files` and `undo_trash` also reject while a task runs   |
-| `build_menu` (`src-tauri/src/lib.rs`)                      | Native items `new_window` and `open_folder`, always enabled          | `TaskRunner` disables them while a task runs                   |
+| `EditModeState` (`src-tauri/src/commands/edit.rs`)         | Rejects `trash_files` while edit mode is off (EDIT-05)               | `trash_files` and `undo_trash` also reject paths in the task lock |
 | `AppState` (`src-tauri/src/lib.rs`)                        | Holds the services                                                  | New fields `tasks` and `collections`                           |
 | `Entry` (`src-tauri/src/scan/mod.rs`, `src/lib/api.ts`)    | `n` is a file name relative to the open folder                       | New optional fields `p` (absolute path) and `b` (badge codes)  |
 | `store.ts` (`src/lib/store.ts`, 455 lines)                 | Holds state, navigation, history, selection, and trash in one module | Navigation and history move to `navigation.ts`, based on `Location` |
 | `entryPath` (`src/lib/store.ts`)                           | Joins `path()` and `Entry.n`; all file actions use it                | Returns `Entry.p` when it is present                           |
 | Action call sites: `Toolbar.tsx`, `ContextMenu.tsx`, `keyboard.ts`, `Sidebar.tsx`, `Breadcrumbs.tsx`, `App.tsx` | Each file calls store functions directly and checks its own conditions | Each file calls the action registry                     |
 | `DeleteFolderDialog` (`src/components/DeleteFolderDialog.tsx`) | Modal dialog in the window                                       | Reference pattern for `ScanCapDialog`                          |
+| `toast` (`src/lib/toast.ts`)                               | Text only; closes after 3.5 s or 7 s                                 | Optional action button, for example "Open"                     |
 | `Settings` (`src-tauri/src/commands/settings.rs`)          | No quality settings                                                  | New fields `quality_sensitivity` and `scan_cap`                |
 
 > Context: `entryPath` is the only place that builds a file path from an entry. `App.tsx`, `keyboard.ts`,
 > `ContextMenu.tsx`, `GridView.tsx`, `ViewerView.tsx`, and the trash actions in `store.ts` all call it. A change of
 > `entryPath` makes the viewer, the info panel, copy, reveal, drag, and trash work in a virtual folder.
 
-> Context: today the busy and enabled checks are spread over the call sites. For example, `Toolbar.tsx` disables
-> Enclosing Folder with `path() === "/"`, and `keyboard.ts` calls `goParent` with its own checks. The menu event
-> `menu-open-folder` in `App.tsx` calls `openFolderDialog` with no check. A block of all navigation during a scan needs
-> one place for these checks (D4).
+> Context: today the enabled checks are spread over the call sites. For example, `Toolbar.tsx` disables Enclosing
+> Folder with `path() === "/"`, and `keyboard.ts` calls `goParent` with its own checks. `trashSelection` checks edit
+> mode in `store.ts`, but `GridView.tsx` calls `trashPaths` from the tile button. A task lock that applies on every
+> path (button, menu, shortcut) needs one place for these checks (D4).
 
 ## System View
 
@@ -158,15 +161,18 @@ src/
 ### D1: `TaskRunner` runs 1 exclusive task for the whole app
 
 - **Decision:** `TaskRunner` in `AppState` holds at most 1 running task. Each task has a `TaskKind`, a source window,
-  an optional root path, a `CancelToken`, and a progress value. `TaskRunner` emits the generic events `task-progress`
-  and `task-done` to all windows.
-- **Reason:** the user requires that navigation and file changes are blocked during a scan. A single app-wide task
-  slot gives one clear busy state that all windows and all commands can check. Future tasks, for example a duplicate
-  search, get the busy state, the progress indicator, and the cancel action with no new code.
+  an optional root path, a task lock (a list of locked folder trees), a `CancelToken`, and a progress value.
+  `TaskRunner` emits the generic events `task-progress` and `task-done` to all windows.
+- **Reason:** the user requires that the scanned folder is locked against changes while the user browses elsewhere.
+  One app-wide task slot gives one task lock that all windows and all commands can check. Future tasks, for example
+  a duplicate search, get the lock, the progress indicator, and the cancel action with no new code. The scan results
+  all go to the 1 "Bad photos" collection, so 2 scans at once would also race for it.
 - **Rejected:** a lock for each feature - each new feature then repeats the busy logic, and 2 features can run at once
   and compete for the decode threads.
-- **Rejected:** a queue of several tasks - no feature needs it now, and the block of navigation makes a queue
-  confusing to the user.
+- **Rejected:** several tasks at once on separate trees - the lock model allows it, but the decode threads, the
+  single collection, and the single progress indicator do not. Add it only when a feature needs it.
+- **Rejected:** a global block of navigation - the first draft of this spec had it. The user rejected it: a scan is
+  attached to its folder, and the user can browse while it runs.
 - **Revisit if:** a future task must run in the background without a block of the UI, for example an idle index
   build. Then add a non-exclusive task class next to the exclusive slot.
 
@@ -196,9 +202,10 @@ src/
 - **Decision:** `actions.ts` defines each user action once: id, label, shortcut, category, `enabled()`, and `run()`.
   Toolbar buttons, context menu items, keyboard shortcuts, sidebar and breadcrumb clicks, and native menu events call
   `runAction(id, args)`. `runAction` does nothing if `enabled()` is false.
-- **Reason:** the busy state must block the same actions on every path: button, menu, shortcut, and native menu. Today
-  each call site has its own checks (see Context and Gap), so a new block needs a change in 6 files and is easy to miss
-  on 1 path. The registry also gives future features 1 place to add an action or a new block rule.
+- **Reason:** the task lock must block the same actions on every path: button, menu, shortcut, and native menu.
+  Today each call site has its own checks (see Context and Gap), so a new rule needs a change in 6 files and is easy
+  to miss on 1 path. The registry also gives future features 1 place to add an action or a new rule. Each action that
+  changes files declares its target paths, so the lock check is generic.
 - **Rejected:** a `disabled={busy()}` check at each call site - it duplicates the rule, and a keyboard shortcut or a
   native menu item can bypass it.
 
@@ -215,9 +222,9 @@ src/
 
 ### D6: The Rust core also enforces the busy state
 
-- **Decision:** the commands that change files or app-wide data (`trash_files`, `undo_trash`, `clear_cache`,
-  `new_window`, `remove_collection`, and each task start command) return `CmdError` with kind `busy` while a task
-  runs. `TaskRunner` disables the native menu items `new_window` and `open_folder` while a task runs.
+- **Decision:** `trash_files` and `undo_trash` call `TaskRunner::guard_paths` and return `CmdError` with kind `locked`
+  for a path in the task lock. `clear_cache`, `remove_collection`, and each task start command call
+  `TaskRunner::guard` and return kind `busy` while a task runs.
 - **Reason:** this is the same defense in depth as EDIT-05 for edit mode. A frontend bug or a second window cannot
   change files in the tree that the scan reads.
 - **Rejected:** a frontend-only block - it depends on each window having the current busy state.
@@ -331,17 +338,25 @@ stateDiagram-v2
 - `TaskRunner` emits `task-progress` to all windows at most every 100 ms.
 - `TaskRunner` emits `task-done` to all windows with the outcome `finished`, `cancelled`, or `failed`. Its `result`
   value is defined by the task kind.
-- `TaskRunner::guard()` returns `Err(busy)` while a task runs. Commands that change files or app-wide data call it.
-- `TaskRunner` disables the native menu items `new_window` and `open_folder` at the start and enables them at the end.
-- A close of the source window cancels its task.
+- `TaskRunner::guard()` returns `Err(busy)` while a task runs.
+- `TaskRunner::guard_paths(paths)` returns `Err(locked)` if a path conflicts with the task lock.
+- A path conflicts with a locked tree if it is the root or inside the tree.
+- A folder path that contains the root also conflicts.
+- A close of the source window cancels its task. A navigation of the source window does not cancel it.
 - A window that opens or reloads calls `get_task_status` to get the current busy state.
 
 | Type          | Fields                                                              | Defined in                     |
 |---------------|---------------------------------------------------------------------|--------------------------------|
 | `TaskKind`    | Enum; first value `ScanBadPhotos`                                   | `src-tauri/src/tasks/mod.rs`   |
-| `TaskStatus`  | `id`, `kind`, `window`, `root`, `done`, `total`                     | `src-tauri/src/tasks/mod.rs`   |
+| `TaskStatus`  | `id`, `kind`, `window`, `root`, `locks`, `done`, `total`            | `src-tauri/src/tasks/mod.rs`   |
 | `TaskDone`    | `id`, `kind`, `window`, `root`, `outcome`, `result` (JSON)          | `src-tauri/src/tasks/mod.rs`   |
 | `CancelToken` | Shared `AtomicBool`; `is_cancelled()`                               | `src-tauri/src/tasks/mod.rs`   |
+
+> Rationale for the conflict with a folder that contains the root: a move to the Trash of `/Photos` also moves
+> `/Photos/2026`. Without this rule, the user can remove the scanned tree through its parent.
+
+> Risk: Finder and other apps can still change files in the locked tree. The pipeline treats a file that is gone as
+> failed and continues. `list_collection` removes paths that do not exist.
 
 > Rationale for the 100 ms progress interval: the percentage on the folder tile needs smooth updates, and 10 events
 > per second are cheap for IPC.
@@ -505,33 +520,37 @@ interface Action<A = void> {
     id: ActionId;                     // for example "nav.back", "file.trash", "task.scanBadPhotos"
     label: (args: A) => string;       // menu and tooltip text
     shortcut?: string;                // display text, for example "⌘["
-    category: ActionCategory;         // used by the busy rule
+    category: ActionCategory;         // used by the task rule
+    targets?: (args: A) => string[];  // paths the action changes; required for "fileChange"
     enabled: (args: A) => boolean;    // feature rule, for example edit mode or LocationCaps
     run: (args: A) => void | Promise<void>;
 }
 
-function isEnabled(id: ActionId, args?: unknown): boolean; // busy rule AND action.enabled
-function runAction(id: ActionId, args?: unknown): void;    // no-op if not enabled
+function isEnabled(id: ActionId, args?: unknown): boolean;     // task rule AND action.enabled
+function blockedReason(id: ActionId, args?: unknown): string | null; // text for a tooltip or toast
+function runAction(id: ActionId, args?: unknown): void;        // shows blockedReason as a toast if blocked by a task
 ```
 
-| Category     | Enabled while busy | Examples                                                                    |
-|--------------|--------------------|-----------------------------------------------------------------------------|
-| `navigation` | No                 | Back, Forward, Enclosing Folder, breadcrumb, sidebar, open folder tile, Open Folder (⌘O), New Window (⌘N), open collection |
-| `fileChange` | No                 | Move to Trash, Undo, Delete Folder                                          |
-| `dataChange` | No                 | Clear Cache, Remove Collection                                              |
-| `task`       | Only Cancel        | Scan for Bad Photos (No), Cancel Scan (Yes)                                 |
-| `view`       | Yes                | Selection, viewer, zoom, sort, tile size, info panel, show hidden files, copy, reveal |
+| Category     | Rule while a task runs                                 | Examples                                                       |
+|--------------|--------------------------------------------------------|----------------------------------------------------------------|
+| `navigation` | Enabled                                                | Back, Forward, Enclosing Folder, breadcrumb, sidebar, open folder, ⌘O, ⌘N, open collection |
+| `view`       | Enabled                                                | Selection, viewer, zoom, sort, tile size, info panel, show hidden files, copy, reveal |
+| `fileChange` | Disabled if a target conflicts with the task lock      | Move to Trash, Undo, Delete Folder                             |
+| `dataChange` | Disabled                                               | Clear Cache, Remove Collection                                 |
+| `task`       | Start disabled; Cancel enabled                         | Scan for Bad Photos, Cancel Scan                               |
 
 - Toolbar, `ContextMenu`, `keyboard.ts`, `Sidebar`, `Breadcrumbs`, and the native menu events call `runAction`.
 - A button or menu item reads `isEnabled` for its disabled state. A disabled context menu item is shown greyed out.
-- Edit mode on and off stays enabled while busy. The file changes stay blocked by the `fileChange` rule.
+- The tooltip of a disabled item shows `blockedReason`, for example "“2026” is being scanned."
+- A keyboard shortcut for a blocked action shows `blockedReason` as a toast.
+- Edit mode on and off stays enabled while a task runs. The `fileChange` rule protects the locked tree.
 
-> Rationale for `view` actions while busy: they read files but do not change files or the location. The user can
-> select and open photos in the viewer during a scan.
+> Rationale for the target paths: the lock applies only to the scanned tree. Move to Trash in `/Photos/2025` stays
+> possible during a scan of `/Photos/2026`. The rule needs the paths that each action changes, so `fileChange` actions
+> declare them.
 
-> Assumption: the request blocks "navigation and folder modification actions". This spec treats the viewer, sort, and
-> show hidden files as `view` actions, because they keep the window in the same folder. Change their category in
-> `actions.ts` if they must be blocked too.
+> Rationale for the toast on a blocked shortcut: a shortcut has no greyed-out state. Without the toast, ⌘⌫ in a locked
+> folder does nothing and the user does not know why.
 
 ## Behavior
 
@@ -541,8 +560,21 @@ function runAction(id: ActionId, args?: unknown): void;    // no-op if not enabl
   - The menu of the grid background. The scan root is the current folder.
   - The menu of a selection of exactly 1 folder tile. The scan root is that folder.
 - `task.scanBadPhotos` requires `LocationCaps.scan`, so it is not available in a virtual folder.
-- While a task runs, both menus show `task.cancel` with the label "Cancel Scan" in its place.
+- The scan starts at once, with no dialog. It uses the scan cap and the sensitivity from Settings.
 - A scan does not change files, so `task.scanBadPhotos` is available in both edit mode states.
+- While a task runs, the scan item depends on the scan root of the menu:
+
+| Menu scan root                              | Item shown                                   |
+|---------------------------------------------|----------------------------------------------|
+| The running task root, or a folder in its tree | "Cancel Scan" (`task.cancel`)             |
+| Any other folder                            | "Scan for Bad Photos", disabled              |
+
+- The tooltip of the disabled item is the `blockedReason`, for example "A scan of “2026” is running."
+
+> Rationale: only 1 task runs at a time (D1), so a scan of another folder cannot start. The disabled item shows the
+> user that the action exists and why it is not available now. "Cancel Scan" appears only where the scan is attached,
+> so the user does not cancel a scan of another folder by mistake. The Collections menu has "Cancel Scan" in all
+> folders.
 
 ### The scan runs as a task
 
@@ -574,6 +606,7 @@ sequenceDiagram
 - `start_scan_bad_photos` reads `scan_cap` and `quality_sensitivity` from Settings at the start.
 - The scan uses `WalkOptions { max_depth: None, max_images: Some(scan_cap) }`.
 - `TaskDone.result` for a scan is `{ collectionId, found, scanned, capped }`.
+- `TaskRunner` locks the tree of the scan root for the whole scan.
 - A cancelled scan does not change the "Bad photos" collection and does not navigate.
 
 > Rationale for no depth limit: the request is to scan all subfolders until the cap. The scan cap bounds the work.
@@ -582,8 +615,9 @@ sequenceDiagram
 ### The app shows the scan progress on the scanned folder
 
 - `TaskIndicator` shows an animated scan icon and the percentage `floor(done × 100 / cap)`, for example "35 %".
-- `TaskIndicator` shows on the folder tile whose path is the task root, over the folder preview.
-- If the task root is the current folder, `TaskIndicator` shows on the last breadcrumb component.
+- `TaskIndicator` shows on the folder tile whose path is the task root, over the folder preview, in each window.
+- `TaskIndicator` shows on the breadcrumb component of the task root while the current folder is in the locked tree.
+- The user can browse into the scanned tree and out of it. The indicator follows the rules above.
 - The toolbar shows a small `TaskIndicator` in all windows. Its tooltip is "Scanning for bad photos: 70 / 200".
 - The status bar shows the same text.
 - `TaskIndicator` reads only `tasks.ts`. Any task with a root shows on that root with no feature code.
@@ -594,30 +628,53 @@ sequenceDiagram
 > which can take longer than the scan. For a tree with fewer photos, the percentage jumps to 100 % at the end.
 
 > Rationale for the indicator on the tile and the breadcrumb: the user wants to see which folder is scanned and when
-> the scan ends. Navigation is blocked, so the scanned folder or its parent stays on screen for the whole scan.
+> the scan ends. The scan is attached to its folder, so the indicator is on that folder wherever it shows. The toolbar
+> indicator covers the case where the folder is not on screen.
 
 ### The app opens "Bad photos" when the scan finishes
 
-- At `task-done` with outcome `finished`, the source window navigates to `{ kind: "collection", id: "bad-photos" }`.
-- This navigation is pushed to the history, so Back returns to the scanned folder.
+```mermaid
+flowchart TD
+    Done["task-done: finished"] --> There{"source window still at origin location and viewer closed?"}
+    There -->|yes| Open["navigate to collection bad-photos"]
+    Open --> Capped1{"capped?"}
+    Capped1 -->|yes| Dialog1["ScanCapDialog: OK"]
+    Capped1 -->|no| Toast1["toast: Found 23 bad photos in 140 photos."]
+    There -->|no| Capped2{"capped?"}
+    Capped2 -->|yes| Dialog2["ScanCapDialog: Open Bad Photos, OK"]
+    Capped2 -->|no| Toast2["toast with Open button"]
+```
+
+- The origin location is the location of the source window when the scan starts.
+- The source window opens `{ kind: "collection", id: "bad-photos" }` only if it still shows the origin location.
+- The auto-open is pushed to the history, so Back returns to the origin location.
+- An open viewer counts as "not at the origin location", so the app does not close the viewer.
 - The other windows do not navigate. They update the Collections menu.
-- The source window then shows the result:
-  - Not capped: a toast, for example "Found 23 bad photos in 140 photos."
-  - Capped: the `ScanCapDialog` over the virtual folder.
 - The virtual folder shows "No bad photos found" if the collection is empty.
 
-> Rationale: the auto-open is a direct call of `navigate`, not of the `nav.openCollection` action. It runs after
-> `TaskRunner` clears the busy state, so the busy rule does not block it.
+> Rationale for the origin check: the user can browse during a scan. A jump away from a folder that the user opened
+> later, or from the viewer, interrupts the user. The toast and the dialog give a one-click way to the result.
+
+> Rationale: the auto-open is a direct call of `navigate`, not of the `nav.openCollection` action, so it needs no
+> special case in the action rules.
 
 ### The `ScanCapDialog` informs the user about the cap
 
 - Title: "Scan Stopped at <cap> Photos", for example "Scan Stopped at 200 Photos".
 - Text: "The folder “<scan root name>” has more photos. Found <found> bad photos in the first <cap> photos. Scan a
   subfolder, or raise the scan limit in Settings."
-- Button: "OK". `Return` and `Escape` close the dialog.
+- Buttons: "OK", and "Open Bad Photos" if the window did not open the virtual folder. `Escape` selects "OK".
+  `Return` selects "Open Bad Photos" if it is shown, else "OK".
 
 > Context: `DeleteFolderDialog.tsx` is a modal dialog in the window. Use its structure and styles. The dialog MUST NOT
 > be a browser `alert()`, because a native alert blocks the WebView.
+
+### The toast has an optional action
+
+- `toast(text, kind, action?)` takes an optional `{ label, actionId, args }`. The button calls `runAction`.
+- A toast with an action stays for 10 s.
+
+> Rationale: the toast action uses the action registry, so a future feature can add a toast with any action.
 
 ### The toolbar shows the virtual folders
 
@@ -631,7 +688,6 @@ sequenceDiagram
 | "Cancel Scan"                               | A task runs             | `task.cancel`              |
 
 - The button shows the state `on` while the window shows a virtual folder.
-- While a task runs, the collection items are disabled, because `nav.openCollection` is a `navigation` action.
 
 ### The grid shows a virtual folder
 
@@ -688,7 +744,7 @@ sequenceDiagram
 > Rationale for the default of 200: a scan of 200 new photos takes about 4 s on the M1 at the QUAL-24 budget. That is
 > a short wait for a first try. The maximum of 1,000 bounds the worst case to about 20 s.
 
-> Assumption: the step of 100 was not specified. It gives 10 slider positions. Change it if a finer step is wanted.
+> Rationale for the step of 100: the slider has 10 positions, and each value is a round number.
 
 ### Types
 
@@ -714,12 +770,13 @@ sequenceDiagram
 | `list_collections`      | command | none            | `CollectionSummary[]`                                     |
 | `list_collection`       | command | `id`, `sort`    | `DirListing` with `Entry.p` and `Entry.b`                 |
 | `remove_collection`     | command | `id`            | none, or the error `busy`                                 |
+| `trash_files`, `undo_trash` | command (changed) | as today | as today, or the error `locked`                  |
 | `get_quality`           | command | `path`          | `QualityMetrics` and flags (cache, else analysis)         |
 | `task-progress`         | event   | none            | `TaskStatus` to all windows                               |
 | `task-done`             | event   | none            | `TaskDone` to all windows                                 |
 | `collections-changed`   | event   | none            | `CollectionSummary[]` to all windows                      |
 
-- `CmdError.kind` gets the new value `busy`.
+- `CmdError.kind` gets the new values `busy` and `locked`.
 - Each new command needs a permission file in `src-tauri/permissions/` and an entry in
   `src-tauri/capabilities/default.json` (SEC-02).
 - A future task kind adds 1 start command, for example `start_find_duplicates`. It reuses the other task commands and
@@ -730,22 +787,26 @@ sequenceDiagram
 ### Tasks and busy state
 
 - [ ] **QUAL-01** `TaskRunner` MUST run at most 1 task at a time for the whole app.
-- [ ] **QUAL-02** While a task runs, all windows MUST block the `navigation`, `fileChange`, and `dataChange` actions.
-- [ ] **QUAL-03** While a task runs, the commands of D6 MUST return the error `busy`.
-- [ ] **QUAL-04** While a task runs, the native menu items New Window and Open Folder MUST be disabled.
-- [ ] **QUAL-05** The user MUST be able to cancel a running task from the context menu and the Collections menu.
+- [ ] **QUAL-02** While a task runs, all windows MUST block each `fileChange` action whose target conflicts with the
+  task lock.
+- [ ] **QUAL-03** While a task runs, the commands of D6 MUST return the error `locked` or `busy`.
+- [ ] **QUAL-04** While a task runs, the `navigation` and `view` actions MUST stay available in all folders.
+- [ ] **QUAL-05** The user MUST be able to cancel a running task from the Collections menu. The context menu of the
+  task root and of each folder in its tree MUST also offer "Cancel Scan".
 - [ ] **QUAL-06** Each action MUST be defined once in `actions.ts`. All call sites MUST use `runAction` and `isEnabled`.
 
 ### Scan
 
 - [ ] **QUAL-07** The context menu of the grid background and of 1 selected folder tile MUST have "Scan for Bad
   Photos".
-- [ ] **QUAL-08** The app MUST NOT start a scan without a user request.
+- [ ] **QUAL-30** While a scan runs, "Scan for Bad Photos" MUST be disabled in the context menus of all other folders.
+- [ ] **QUAL-08** The app MUST NOT start a scan without a user request. The scan MUST start with no dialog.
 - [ ] **QUAL-09** The scan MUST read the scan root and all its subfolders, depth first, with the rules FPV-09 and
   FPV-10.
 - [ ] **QUAL-10** The scan MUST stop at the scan cap.
 - [ ] **QUAL-11** The scanned folder MUST show an animated scan icon and the percentage while the scan runs.
-- [ ] **QUAL-12** After a finished scan, the source window MUST open the "Bad photos" virtual folder.
+- [ ] **QUAL-12** After a finished scan, the source window MUST open "Bad photos" if it still shows the origin
+  location. Else it MUST offer an Open button.
 - [ ] **QUAL-13** The app MUST show the `ScanCapDialog` if the scan stopped at the cap and the tree has more photos.
 
 ### Pipeline and analysis
@@ -795,15 +856,17 @@ sequenceDiagram
 - [ ] Unit tests in `run.rs` use a test analyzer. `accept` gets the walk order, and a second run reads only the cache.
 - [ ] Unit tests in `run.rs`: a version change analyzes again, and a cancel stops the walk.
 - [ ] Unit tests in `tasks/mod.rs`: a second `start` returns `busy`; `guard` fails while a task runs.
+- [ ] Unit tests in `tasks/mod.rs`: with a lock on `/a/b`, `guard_paths` rejects `/a/b`, `/a/b/c.jpg`, and `/a`. It
+  accepts `/a/x.jpg` and `/a/bb`.
 - [ ] Unit tests in `collections.rs`: `remove_paths` and `restore_paths` keep the order.
-- [ ] Unit tests for `actions.ts` (or a scripted run): each `navigation`, `fileChange`, and `dataChange` action is
-  disabled while busy.
+- [ ] Unit tests for `actions.ts` (or a scripted run): `fileChange` actions are disabled only for targets in the lock.
+  `navigation` and `view` actions stay enabled.
 - [ ] Benchmark row in `src-tauri/benches/core.rs`: analysis of the generated 24 MP photo (QUAL-24). Record the result
   in `docs/benchmarks.md`.
 - [ ] Calibration example `src-tauri/examples/quality_dump.rs`: prints the metrics of each image in a folder as CSV.
   Run it on a labelled set of 50 or more sharp and 50 or more blurry photos. Set `blur_threshold` from the result.
 - [ ] Scripted run with `FG_DEV_SCRIPT`: start a scan on a tree with 10,000 photos and scroll the grid. PERF-06 and
-  PERF-08 MUST pass (QUAL-28). Try ⌘[, ⌘↑, ⌘N, and ⌘⌫: nothing happens.
+  PERF-08 MUST pass (QUAL-28). ⌘⌫ in the scanned tree shows the toast; ⌘⌫ outside it moves the file.
 
 > Context: the `examples/example gallery/` folder has 6 photos in 3 folders. It is a good test for the recursive walk,
 > but too small for calibration. Use a personal photo library with images marked by hand, and add 2 or 3 small blurry
@@ -813,8 +876,8 @@ sequenceDiagram
 
 The generic parts come first, so the photo quality feature is their first client.
 
-- [ ] Add `tasks/mod.rs` with `TaskRunner`, the events, the menu item state, and the unit tests (D1, D6).
-- [ ] Add `guard()` calls to `trash_files`, `undo_trash`, `clear_cache`, and `new_window` (D6).
+- [ ] Add `tasks/mod.rs` with `TaskRunner`, the task lock, the events, and the unit tests (D1).
+- [ ] Add `guard_paths` to `trash_files` and `undo_trash`, and `guard` to `clear_cache` and `remove_collection` (D6).
 - [ ] Add the `analysis` table and `AnalysisCache` (D3).
 - [ ] Add `pipeline/` with `TreeWalker`, the traits, `AnalysisInput`, `run_pipeline`, and the unit tests (D2).
 - [ ] Add `collections.rs` with `CollectionStore` and its unit tests. Connect `trash_files` and `undo_trash`.
@@ -826,7 +889,7 @@ The generic parts come first, so the photo quality feature is their first client
 - [ ] Add `TaskIndicator.tsx` on folder tiles, the last breadcrumb, the toolbar, and the status bar.
 - [ ] Add `quality/kernels.rs`, `QualityAnalyzer`, and `BadPhotoSink`.
 - [ ] Add `start_scan_bad_photos` and the other commands, permissions, and capability entries.
-- [ ] Add the Collections button, the context menu items, `ScanCapDialog.tsx`, the result toast, and the auto-open.
+- [ ] Add the toast action. Add the Collections button, the context menu items, `ScanCapDialog.tsx`, and the auto-open.
 - [ ] Add the virtual folder breadcrumbs, the tile badges, the empty state, and the info panel rows.
 - [ ] Add `quality_sensitivity` and `scan_cap` to `Settings`, with the clamp, and to `SettingsView.tsx`.
 - [ ] Add the benchmark row and the calibration example. Calibrate the thresholds.
@@ -847,7 +910,8 @@ The generic parts come first, so the photo quality feature is their first client
 - The scan covers only the first photos in walk order, up to the scan cap. The user scans the other photos from a
   subfolder, or raises the cap in Settings.
 - The app does not save collections. They are lost when the app quits.
-- The user cannot navigate during a scan. A scan at the maximum cap can block navigation for about 20 s on the M1.
+- Only 1 scan runs at a time. A scan of another folder must wait until the current scan ends or is cancelled.
+- The task lock protects the tree only against actions in the app. Finder and other apps can still change it.
 
 ## Clarifications
 
@@ -856,7 +920,10 @@ The generic parts come first, so the photo quality feature is their first client
   The user cannot start a scan from inside a collection.
 - **The cap dialog has no "Scan Next" action.** The user scans a subfolder, or raises the scan cap in Settings.
 - **The sensitivity setting stays.** It changes `blur_threshold` and needs no new analysis.
-- **The source window opens "Bad photos" at once when the scan finishes.** It does this also for an empty result.
+- **The scan starts at once.** The scan cap and the sensitivity are settings. The app shows no dialog before a scan.
+- **The user can browse during a scan.** The scan is attached to its folder. Only file changes in that tree are locked.
+- **The source window opens "Bad photos" only if it still shows the origin location.** Else it offers an Open
+  button. The auto-open happens also for an empty result.
 
 ## Future Improvements
 
