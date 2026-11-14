@@ -1,5 +1,6 @@
-//! BadPhotoSink: applies the thresholds to the metrics and fills the "Bad photos" collection. The
-//! cache stores only metrics, so a threshold or sensitivity change needs no new analysis.
+//! BadPhotoSink: applies the thresholds to the metrics and the screenshot rules to the screenshot
+//! signals, and fills the "Bad photos" collection. The cache stores only metrics and signals, so a
+//! threshold or sensitivity change needs no new analysis.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -7,6 +8,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use super::analyzer::QualityMetrics;
+use crate::screenshot::{is_screenshot, ScreenshotSignals};
 use crate::collections::{Collection, CollectionItem, CollectionOrigin, CollectionStore};
 use crate::pipeline::{PipelineSummary, ResultSink};
 use crate::tasks::TaskKind;
@@ -30,6 +32,8 @@ pub enum QualityFlag {
     Underexposed,
     Overexposed,
     LowContrast,
+    /// Not a quality problem: the image is a screenshot, not a camera photo.
+    Screenshot,
 }
 
 impl QualityFlag {
@@ -39,6 +43,7 @@ impl QualityFlag {
             QualityFlag::Underexposed => "quality.underexposed",
             QualityFlag::Overexposed => "quality.overexposed",
             QualityFlag::LowContrast => "quality.lowContrast",
+            QualityFlag::Screenshot => "quality.screenshot",
         }
     }
 }
@@ -91,6 +96,15 @@ impl Thresholds {
     }
 }
 
+/// The flags of 1 image for the bad photo scan. A screenshot gets only the `Screenshot` flag: the
+/// blur and exposure rules are made for camera photos and give no useful result for a screen.
+pub fn bad_photo_flags(th: &Thresholds, path: &Path, m: &QualityMetrics, s: &ScreenshotSignals) -> Vec<QualityFlag> {
+    if is_screenshot(path, s) {
+        return vec![QualityFlag::Screenshot];
+    }
+    th.flags(m)
+}
+
 pub struct BadPhotoSink {
     thresholds: Thresholds,
     store: Arc<CollectionStore>,
@@ -104,9 +118,9 @@ impl BadPhotoSink {
     }
 }
 
-impl ResultSink<QualityMetrics> for BadPhotoSink {
-    fn accept(&mut self, path: &Path, m: &QualityMetrics) {
-        let flags = self.thresholds.flags(m);
+impl ResultSink<(QualityMetrics, ScreenshotSignals)> for BadPhotoSink {
+    fn accept(&mut self, path: &Path, (m, s): &(QualityMetrics, ScreenshotSignals)) {
+        let flags = bad_photo_flags(&self.thresholds, path, m, s);
         if !flags.is_empty() {
             let badges = flags.into_iter().map(|f| f.badge().to_string()).collect();
             self.items.push(CollectionItem::new(path.to_string_lossy().into_owned(), badges));
@@ -170,22 +184,40 @@ mod tests {
     }
 
     #[test]
+    fn the_example_screenshot_gets_only_the_screenshot_flag() {
+        use crate::pipeline::{decode_input_for, ImageAnalyzer, Pair};
+        use crate::quality::QualityAnalyzer;
+        use crate::screenshot::ScreenshotAnalyzer;
+        let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/example gallery/another/screenshot_examle.JPEG");
+        if !p.exists() {
+            return;
+        }
+        let a = Pair(QualityAnalyzer, ScreenshotAnalyzer);
+        let (m, s) = a.analyze(&decode_input_for(&a, &p).unwrap()).unwrap();
+        assert_eq!(bad_photo_flags(&Thresholds::default(), &p, &m, &s), [QualityFlag::Screenshot]);
+    }
+
+    #[test]
     fn finish_fills_the_collection_unless_cancelled() {
         let store = Arc::new(CollectionStore::default());
         let blurry = QualityMetrics { lap_var_local: 1.0, mean_luma: 120.0, std_luma: 50.0, ..Default::default() };
         let sharp = QualityMetrics { lap_var_local: 900.0, ..blurry };
+        let photo = ScreenshotSignals { camera_exif: true, ..Default::default() };
         let run = |cancelled: bool| {
             let mut s = BadPhotoSink::new(Thresholds::default(), Arc::clone(&store), "/r".into());
-            s.accept(Path::new("/r/a.jpg"), &blurry);
-            s.accept(Path::new("/r/b.jpg"), &sharp);
-            s.finish(&PipelineSummary { scanned: 2, cancelled, ..Default::default() })
+            s.accept(Path::new("/r/a.jpg"), &(blurry, photo));
+            s.accept(Path::new("/r/b.jpg"), &(sharp, photo));
+            // A blurry screenshot gets only the screenshot badge.
+            s.accept(Path::new("/r/Screenshot 1.png"), &(blurry, ScreenshotSignals::default()));
+            s.finish(&PipelineSummary { scanned: 3, cancelled, ..Default::default() })
         };
         let r = run(true);
-        assert_eq!(r["found"], 1);
+        assert_eq!(r["found"], 2);
         assert!(store.get(BAD_PHOTOS_ID).is_none());
         run(false);
         let c = store.get(BAD_PHOTOS_ID).unwrap();
-        assert_eq!(c.items.len(), 1);
+        assert_eq!(c.items.len(), 2);
         assert_eq!(c.items[0].badges, ["quality.blurry"]);
+        assert_eq!(c.items[1].badges, ["quality.screenshot"]);
     }
 }

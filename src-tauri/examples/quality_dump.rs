@@ -21,7 +21,7 @@ fn main() {
     println!("path,folder,lap_var,lap_var_local,tenengrad,brenner,mean_luma,std_luma,clip_dark,clip_bright,flags,ms");
     for item in TreeWalker::new(Path::new(&root), WalkOptions::default()) {
         let t = std::time::Instant::now();
-        let m = decode_input(&item.path, InputSpec::Gray { edge }).and_then(|i| qa.analyze(&i));
+        let m = decode_input(&item.path, InputSpec::gray(edge)).and_then(|i| qa.analyze(&i));
         let ms = t.elapsed().as_secs_f64() * 1000.0;
         let folder = item.path.parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy()).unwrap_or_default();
         let path = item.path.to_string_lossy().replace('"', "\"\"");

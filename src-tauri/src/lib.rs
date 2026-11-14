@@ -8,6 +8,7 @@ pub mod pools;
 pub mod protocols;
 pub mod quality;
 pub mod scan;
+pub mod screenshot;
 pub mod tasks;
 pub mod thumbs;
 pub mod watch;

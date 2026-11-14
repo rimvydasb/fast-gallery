@@ -251,8 +251,9 @@ src/
 > raise the Laplacian response.
 
 > Rationale for `AnalysisInput` in the pipeline: each analyzer declares the input it needs (`InputSpec`, for example
-> `Gray { edge: 1024 }`). The decode is in the pipeline, not in the analyzer, so a future run of 2 analyzers with the
-> same input can share 1 decode.
+> `InputSpec::gray(1024)`). An `InputSpec` can request a gray plane, an RGBX plane, and the file metadata. The decode is
+> in the pipeline, not in the analyzer. `Pair<A, B>` runs 2 analyzers on 1 decode of the merged spec, and stores 1 cache
+> row for each part under the part's own `ID` and `VERSION`.
 
 > Assumption: 1024 px is a good balance of speed and accuracy. Verify with the calibration tool (see Verification):
 > compare the separation of sharp and blurry samples at 768, 1024, and 1536 px.
@@ -316,6 +317,44 @@ src/
 > Risk: sensor noise at high ISO raises the Laplacian variance, so a noisy blurry photo can pass as sharp. The
 > downscale to 1024 px averages most of the noise. If calibration shows false negatives, add a 3×3 Gaussian blur
 > before the Laplacian and record the change as `ALGO_VERSION` 2.
+
+### `ScreenshotAnalyzer` finds screenshots
+
+The bad photo scan runs `Pair(QualityAnalyzer, ScreenshotAnalyzer)`. `ScreenshotAnalyzer` is in
+`src-tauri/src/screenshot/` and has no dependency on photo quality, so a separate screenshot scan can use it alone.
+
+The analyzer reads an RGBX plane with a long edge of `SCREENSHOT_EDGE` (512 px, nearest-neighbor downscale) and the
+file metadata (`decode::image_meta`). It stores these signals:
+
+| Signal        | Source                                                                                      |
+|---------------|---------------------------------------------------------------------------------------------|
+| `width`, `height` | Stored pixel size, after the EXIF orientation                                           |
+| `png`         | The file type is `public.png`                                                               |
+| `camera_exif` | EXIF camera make or model, lens, exposure time, aperture, ISO, or focal length              |
+| `os_comment`  | The EXIF UserComment is "Screenshot" (iOS and macOS write it)                               |
+| `flat`        | Fraction of pixels with the same RGB value as their right neighbor                         |
+| `top_colors`  | Fraction of pixels in the 8 most frequent colors, at 4 bits per channel                     |
+
+`ScreenshotRules::is_screenshot` applies these rules in this order:
+
+1. `camera_exif` → not a screenshot.
+2. `os_comment`, or a screenshot file name (for example "Screenshot …", "Screen Shot …", "Bildschirmfoto …") → a
+   screenshot.
+3. UI-like pixels (`flat` ≥ 0.5 and `top_colors` ≥ 0.5) and (`png` or a screen size) → a screenshot. A screen size is a
+   known phone, tablet, or display resolution, or an aspect ratio from 2.0 to 2.4.
+
+- `BadPhotoSink` gives a screenshot only the `screenshot` flag (badge `quality.screenshot`, tone `info`). The blur and
+  exposure rules are made for camera photos.
+- The file name is not in the cache. The rules read it from the path, so a rename needs no new analysis.
+- `examples/screenshot_dump.rs` prints the signals of a folder tree as CSV for calibration.
+
+> Rationale for rule 3: UI-like pixels alone also match drawings, comics, and scanned documents. A PNG file or a screen
+> size is necessary as a second signal.
+
+> Assumption: the thresholds of rule 3 are first estimates. In the example gallery, 3 cropped iOS screenshots (JPEG) have
+> `flat` ≥ 0.54 and `top_colors` ≥ 0.75. The camera photos have `flat` ≤ 0.17.
+
+> Risk: a screenshot that was converted to JPEG, cropped to an unknown size, renamed, and stripped of EXIF is not found.
 
 ## Generic Components
 
@@ -751,8 +790,10 @@ flowchart TD
 | Type                 | Purpose                                                          | Defined in                            |
 |----------------------|------------------------------------------------------------------|---------------------------------------|
 | `QualityMetrics`     | The 8 metric values; `QualityAnalyzer::Output`                   | `src-tauri/src/quality/analyzer.rs`   |
-| `QualityFlag`        | `blurry`, `underexposed`, `overexposed`, `lowContrast`           | `src-tauri/src/quality/sink.rs`       |
-| `InputSpec`, `AnalysisInput` | Requested and decoded analysis input                     | `src-tauri/src/pipeline/input.rs`     |
+| `QualityFlag`        | `blurry`, `underexposed`, `overexposed`, `lowContrast`, `screenshot` | `src-tauri/src/quality/sink.rs`   |
+| `ScreenshotSignals`  | The screenshot signals; `ScreenshotAnalyzer::Output`             | `src-tauri/src/screenshot/mod.rs`     |
+| `InputSpec`, `AnalysisInput`, `Plane` | Requested and decoded analysis input            | `src-tauri/src/pipeline/input.rs`     |
+| `Pair`               | 2 analyzers on 1 decode, with 1 cache row for each               | `src-tauri/src/pipeline/analyzer.rs`  |
 | `WalkOptions`, `PipelineSummary` | Walker options and the pipeline result counts        | `src-tauri/src/pipeline/`             |
 | Task types           | See the table in the `TaskRunner` section                        | `src-tauri/src/tasks/mod.rs`          |
 | Collection types     | See the class diagram; plus `CollectionSummary` (`id`, `name`, `icon`, `count`) | `src-tauri/src/collections.rs` |
@@ -816,6 +857,9 @@ flowchart TD
 - [x] **QUAL-16** `BadPhotoSink` MUST use `lap_var_local` for the `blurry` flag.
 - [x] **QUAL-17** The pipeline MUST store analyzer results in the `analysis` table and reuse rows that are not stale.
 - [x] **QUAL-18** The pipeline MUST keep at most `perf_cores() / 2` jobs in the decode pool.
+- [x] **QUAL-31** The bad photo scan MUST give a screenshot the `screenshot` flag and no other flag.
+- [x] **QUAL-32** `ScreenshotAnalyzer` MUST NOT depend on the `quality` module, so a scan can use it alone.
+- [x] **QUAL-33** A file with camera EXIF fields MUST NOT get the `screenshot` flag.
 
 ### Collections and virtual folders
 

@@ -8,8 +8,8 @@ pub mod input;
 pub mod run;
 pub mod walk;
 
-pub use analyzer::{ImageAnalyzer, ResultSink};
+pub use analyzer::{ImageAnalyzer, Pair, ResultSink};
 pub use cache::AnalysisCache;
-pub use input::{decode_input, decode_input_for, AnalysisInput, InputSpec};
+pub use input::{decode_input, decode_input_for, AnalysisInput, InputSpec, Plane};
 pub use run::{max_in_flight, run_pipeline, PipelineSummary, Progress};
 pub use walk::{TreeWalker, WalkItem, WalkOptions};

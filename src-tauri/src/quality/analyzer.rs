@@ -37,13 +37,14 @@ impl ImageAnalyzer for QualityAnalyzer {
     type Output = QualityMetrics;
 
     fn input(&self) -> InputSpec {
-        InputSpec::Gray { edge: ANALYSIS_EDGE }
+        InputSpec::gray(ANALYSIS_EDGE)
     }
 
     fn analyze(&self, input: &AnalysisInput) -> Option<QualityMetrics> {
-        if input.width < 3 || input.height < 3 {
+        let g = input.gray.as_ref()?;
+        if g.width < 3 || g.height < 3 {
             return None;
         }
-        Some(super::kernels::metrics(input.width, input.height, &input.gray))
+        Some(super::kernels::metrics(g.width, g.height, &g.data))
     }
 }

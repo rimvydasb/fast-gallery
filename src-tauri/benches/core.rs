@@ -8,8 +8,9 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use fast_gallery_lib::decode;
-use fast_gallery_lib::pipeline::{decode_input_for, ImageAnalyzer};
+use fast_gallery_lib::pipeline::{decode_input_for, ImageAnalyzer, Pair};
 use fast_gallery_lib::quality::QualityAnalyzer;
+use fast_gallery_lib::screenshot::ScreenshotAnalyzer;
 use fast_gallery_lib::scan::index::PreviewIndex;
 use fast_gallery_lib::scan::preview::{resolve, Limits};
 use fast_gallery_lib::scan::{list_dir, SortKey, SortSpec};
@@ -125,8 +126,13 @@ fn main() {
     let d = time(15, || qa.analyze(&decode_input_for(&qa, &jpeg).unwrap()).unwrap().lap_var);
     ok &= row("QUAL-24", "quality analysis, 24 MP JPEG photo", d, Some(40.0));
     let input = decode_input_for(&qa, &jpeg).unwrap();
+    let g = input.gray.as_ref().unwrap();
     let d = time(15, || qa.analyze(&input).unwrap().lap_var);
-    row("-", &format!("quality kernels only, {} × {} gray", input.width, input.height), d, None);
+    row("-", &format!("quality kernels only, {} × {} gray", g.width, g.height), d, None);
+    // The bad photo scan: quality and screenshot signals from 1 decode.
+    let pair = Pair(QualityAnalyzer, ScreenshotAnalyzer);
+    let d = time(15, || pair.analyze(&decode_input_for(&pair, &jpeg).unwrap()).unwrap().1.flat);
+    row("-", "quality + screenshot analysis, 24 MP JPEG photo", d, None);
 
     // Cached thumbnail read (disk cache, then memory cache), related to PERF-06.
     let svc = ThumbnailService::new(ThumbCache::new(root.join("cache"), u64::MAX));

@@ -12,6 +12,7 @@ const BADGES: Record<string, BadgeInfo> = {
   "quality.underexposed": { label: "Underexposed", tone: "warn" },
   "quality.overexposed": { label: "Overexposed", tone: "warn" },
   "quality.lowContrast": { label: "Low Contrast", tone: "warn" },
+  "quality.screenshot": { label: "Screenshot", tone: "info" },
 };
 
 export function badgeInfo(code: string): BadgeInfo {

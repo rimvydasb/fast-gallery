@@ -8,9 +8,13 @@ use tauri::{Manager, State, WebviewWindow};
 
 use super::{blocking, CmdError, CmdResult};
 use crate::pipeline::{
-    decode_input_for, max_in_flight, run_pipeline, AnalysisCache, ImageAnalyzer, TreeWalker, WalkOptions,
+    decode_input_for, max_in_flight, run_pipeline, AnalysisCache, ImageAnalyzer, Pair, TreeWalker, WalkOptions,
 };
-use crate::quality::{BadPhotoSink, QualityAnalyzer, QualityFlag, QualityMetrics, Thresholds};
+use crate::quality::{bad_photo_flags, BadPhotoSink, QualityAnalyzer, QualityFlag, QualityMetrics, Thresholds};
+use crate::screenshot::ScreenshotAnalyzer;
+
+/// The analyzers of the bad photo scan: quality metrics and screenshot signals from 1 decode.
+type BadPhotoAnalyzer = Pair<QualityAnalyzer, ScreenshotAnalyzer>;
 use crate::tasks::{TaskKind, TaskStatus};
 use crate::AppState;
 
@@ -42,7 +46,7 @@ pub fn start_scan_bad_photos(window: WebviewWindow, state: State<'_, AppState>, 
                 .with_cancel(ctx.cancel_token().clone());
             let sink = BadPhotoSink::new(thresholds, store, r.clone());
             let mut cache = AnalysisCache::new(index);
-            Ok(run_pipeline(walker, Arc::new(QualityAnalyzer), sink, &mut cache, ctx, max_in_flight()))
+            Ok(run_pipeline(walker, Arc::new(Pair(QualityAnalyzer, ScreenshotAnalyzer)), sink, &mut cache, ctx, max_in_flight()))
         },
     )?;
     Ok(status)
@@ -65,16 +69,16 @@ pub async fn get_quality(state: State<'_, AppState>, path: String) -> CmdResult<
         let md = std::fs::metadata(p).map_err(|e| CmdError::io(p, &e))?;
         let (mtime, size) = (crate::scan::mtime_ms(&md), md.len());
         let mut cache = AnalysisCache::new(index);
-        let metrics = match cache.get::<QualityAnalyzer>(p, mtime, size) {
-            Some(m) => m,
+        let (metrics, shot) = match cache.get::<BadPhotoAnalyzer>(p, mtime, size) {
+            Some(r) => r,
             None => {
-                let a = QualityAnalyzer;
-                let Some(m) = decode_input_for(&a, p).and_then(|i| a.analyze(&i)) else { return Ok(None) };
-                cache.put::<QualityAnalyzer>(p, mtime, size, &m);
-                m
+                let a = Pair(QualityAnalyzer, ScreenshotAnalyzer);
+                let Some(r) = decode_input_for(&a, p).and_then(|i| a.analyze(&i)) else { return Ok(None) };
+                cache.put::<BadPhotoAnalyzer>(p, mtime, size, &r);
+                r
             }
         };
-        Ok(Some(QualityInfo { flags: thresholds.flags(&metrics), metrics }))
+        Ok(Some(QualityInfo { flags: bad_photo_flags(&thresholds, p, &metrics, &shot), metrics }))
     })
     .await?
 }

@@ -25,8 +25,18 @@ impl AnalysisCache {
         Self { index, pending: Vec::new() }
     }
 
-    /// The cached output, if the row is not stale.
+    /// The cached output, if the row is not stale (`ImageAnalyzer::cache_get`).
     pub fn get<A: ImageAnalyzer>(&self, path: &Path, mtime: i64, size: u64) -> Option<A::Output> {
+        A::cache_get(self, path, mtime, size)
+    }
+
+    /// Queues the output (`ImageAnalyzer::cache_put`).
+    pub fn put<A: ImageAnalyzer>(&mut self, path: &Path, mtime: i64, size: u64, out: &A::Output) {
+        A::cache_put(self, path, mtime, size, out)
+    }
+
+    /// The row of `A::ID`, if not stale.
+    pub fn get_row<A: ImageAnalyzer>(&self, path: &Path, mtime: i64, size: u64) -> Option<A::Output> {
         let (dir, name) = split(path)?;
         let row = self.index.analysis_get(&dir, &name, A::ID)?;
         if row.version != A::VERSION || row.mtime != mtime || row.size != size as i64 {
@@ -35,8 +45,8 @@ impl AnalysisCache {
         serde_json::from_str(&row.data).ok()
     }
 
-    /// Queues a row; writes a batch of `BATCH` rows.
-    pub fn put<A: ImageAnalyzer>(&mut self, path: &Path, mtime: i64, size: u64, out: &A::Output) {
+    /// Queues a row of `A::ID`; writes a batch of `BATCH` rows.
+    pub fn put_row<A: ImageAnalyzer>(&mut self, path: &Path, mtime: i64, size: u64, out: &A::Output) {
         let (Some((dir, name)), Ok(data)) = (split(path), serde_json::to_string(out)) else { return };
         self.pending.push((dir, name, A::ID, AnalysisRow { version: A::VERSION, mtime, size: size as i64, data }));
         if self.pending.len() >= BATCH {

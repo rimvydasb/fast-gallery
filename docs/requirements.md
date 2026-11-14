@@ -421,6 +421,9 @@ decisions are ADR-001 to ADR-006 in `architecture-adr.md`.
 - [x] **QUAL-16** `BadPhotoSink` MUST use `lap_var_local` for the `blurry` flag.
 - [x] **QUAL-17** The pipeline MUST store analyzer results in the `analysis` table and reuse rows that are not stale.
 - [x] **QUAL-18** The pipeline MUST keep at most `perf_cores() / 2` jobs in the decode pool.
+- [x] **QUAL-31** The bad photo scan MUST give a screenshot the `screenshot` flag and no other flag.
+- [x] **QUAL-32** `ScreenshotAnalyzer` MUST NOT depend on the `quality` module, so a scan can use it alone.
+- [x] **QUAL-33** A file with camera EXIF fields MUST NOT get the `screenshot` flag.
 - [x] **QUAL-19** After a finished scan, the app MUST replace the "Bad photos" collection.
 - [x] **QUAL-20** The collections MUST exist only in memory and MUST be shared by all windows.
 - [x] **QUAL-21** The toolbar MUST have a Collections button with a menu that opens each collection.

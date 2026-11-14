@@ -113,7 +113,7 @@ export interface QualityMetrics {
 
 export interface QualityInfo {
   metrics: QualityMetrics;
-  flags: ("blurry" | "underexposed" | "overexposed" | "lowContrast")[];
+  flags: ("blurry" | "underexposed" | "overexposed" | "lowContrast" | "screenshot")[];
 }
 
 export interface CmdError {

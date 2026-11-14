@@ -163,11 +163,12 @@ mod tests {
         const VERSION: u32 = 1;
         type Output = u32;
         fn input(&self) -> InputSpec {
-            InputSpec::Gray { edge: 64 }
+            InputSpec::gray(64)
         }
         fn analyze(&self, i: &AnalysisInput) -> Option<u32> {
             self.calls.fetch_add(1, Ordering::Relaxed);
-            Some((i.gray.iter().map(|&v| v as u64).sum::<u64>() / i.gray.len() as u64) as u32)
+            let g = &i.gray.as_ref()?.data;
+            Some((g.iter().map(|&v| v as u64).sum::<u64>() / g.len() as u64) as u32)
         }
     }
 
@@ -282,6 +283,54 @@ mod tests {
         let r = run(t.path(), Arc::clone(&v2), &idx, &Ctx::new(None), None);
         assert_eq!(r["summary"]["analyzed"], 13);
         assert_eq!(v2.0.calls.load(Ordering::Relaxed), 13);
+    }
+
+    /// Max luminance, as a second analyzer with its own cache rows.
+    struct MaxAnalyzer;
+    impl ImageAnalyzer for MaxAnalyzer {
+        const ID: &'static str = "test-max";
+        const VERSION: u32 = 1;
+        type Output = u32;
+        fn input(&self) -> InputSpec {
+            InputSpec::gray(64)
+        }
+        fn analyze(&self, i: &AnalysisInput) -> Option<u32> {
+            i.gray.as_ref()?.data.iter().max().map(|&v| v as u32)
+        }
+    }
+
+    #[test]
+    fn a_pair_shares_the_cache_rows_of_its_parts() {
+        let t = tempfile::tempdir().unwrap();
+        make_tree(t.path(), 5);
+        let idx = Arc::new(PreviewIndex::in_memory().unwrap());
+        let a = Arc::new(MeanAnalyzer { calls: AtomicUsize::new(0) });
+        run(t.path(), Arc::clone(&a), &idx, &Ctx::new(None), None);
+        struct Outputs(Vec<(u32, u32)>);
+        impl ResultSink<(u32, u32)> for Outputs {
+            fn accept(&mut self, _: &Path, o: &(u32, u32)) {
+                self.0.push(*o);
+            }
+            fn failed(&mut self, _: &Path) {}
+            fn finish(self, s: &PipelineSummary) -> serde_json::Value {
+                serde_json::json!({ "outputs": self.0, "summary": s })
+            }
+        }
+        let pair = || {
+            let p = Arc::new(crate::pipeline::Pair(MeanAnalyzer { calls: AtomicUsize::new(0) }, MaxAnalyzer));
+            let w = TreeWalker::new(t.path(), WalkOptions { max_depth: None, max_images: None });
+            let mut cache = AnalysisCache::new(Arc::clone(&idx));
+            run_pipeline(w, p, Outputs(Vec::new()), &mut cache, &Ctx::new(None), 3)
+        };
+        // The first pair run analyzes again: the rows of MaxAnalyzer are missing.
+        let first = pair();
+        assert_eq!(first["summary"]["analyzed"], 5);
+        let second = pair();
+        assert_eq!(second["summary"]["cached"], 5);
+        assert_eq!(first["outputs"], second["outputs"]);
+        // The single analyzer still finds its rows.
+        let r = run(t.path(), Arc::clone(&a), &idx, &Ctx::new(None), None);
+        assert_eq!(r["summary"]["cached"], 5);
     }
 
     #[test]

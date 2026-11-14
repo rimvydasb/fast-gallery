@@ -16,7 +16,7 @@ use objc2_image_io::{
     kCGImageDestinationLossyCompressionQuality, kCGImagePropertyExifDateTimeOriginal,
     kCGImagePropertyExifDictionary, kCGImagePropertyExifExposureTime, kCGImagePropertyExifFNumber,
     kCGImagePropertyExifFocalLength, kCGImagePropertyExifISOSpeedRatings,
-    kCGImagePropertyExifLensModel, kCGImagePropertyGPSDictionary, kCGImagePropertyGPSLatitude,
+    kCGImagePropertyExifLensModel, kCGImagePropertyExifUserComment, kCGImagePropertyGPSDictionary, kCGImagePropertyGPSLatitude,
     kCGImagePropertyGPSLatitudeRef, kCGImagePropertyGPSLongitude, kCGImagePropertyGPSLongitudeRef,
     kCGImagePropertyOrientation, kCGImagePropertyPixelHeight, kCGImagePropertyPixelWidth,
     kCGImagePropertyTIFFDateTime, kCGImagePropertyTIFFDictionary, kCGImagePropertyTIFFMake,
@@ -327,7 +327,7 @@ pub fn date_taken(path: &Path) -> Option<i64> {
     parse_exif_date(&s)
 }
 
-#[derive(Serialize, Default, Debug)]
+#[derive(Serialize, Default, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ImageMeta {
     pub width: Option<u32>,
@@ -341,6 +341,9 @@ pub struct ImageMeta {
     pub iso: Option<f64>,
     pub date_taken: Option<String>,
     pub gps: Option<(f64, f64)>,
+    /// EXIF UserComment. iOS and macOS write "Screenshot" here for screenshots.
+    #[serde(skip)]
+    pub user_comment: Option<String>,
 }
 
 /// Reads dimensions (after EXIF orientation), format, and EXIF fields for the information panel.
@@ -374,6 +377,7 @@ pub fn image_meta(path: &Path) -> ImageMeta {
             m.aperture = num(&exif, kCGImagePropertyExifFNumber);
             m.exposure_time = num(&exif, kCGImagePropertyExifExposureTime);
             m.date_taken = string(&exif, kCGImagePropertyExifDateTimeOriginal);
+            m.user_comment = string(&exif, kCGImagePropertyExifUserComment);
             if let Some(iso) = exif.get(kCGImagePropertyExifISOSpeedRatings) {
                 if let Some(arr) = iso.downcast_ref::<objc2_core_foundation::CFArray>() {
                     let arr: &objc2_core_foundation::CFArray<CFNumber> = arr.cast_unchecked();

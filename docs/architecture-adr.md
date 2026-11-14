@@ -17,7 +17,7 @@
 - **Decision:** `run_pipeline` connects a `TreeWalker`, an `AnalysisCache`, an `ImageAnalyzer`, and a `ResultSink`, with generic functions (static dispatch). Photo quality supplies only `QualityAnalyzer` and `BadPhotoSink`.
 - **Rejected:** A photo-quality-only pipeline - the next feature copies it.
 - **Rejected:** Dynamic plugins (`Box<dyn ImageAnalyzer>`) - the analyzers are known at compile time, and generics are simpler.
-- **Consequences:** The pipeline decodes the input (`InputSpec`), not the analyzer, so 2 analyzers with the same input can later share 1 decode. At most `perf_cores() / 2` jobs are in the decode pool, so a thumbnail job waits for at most 1 analysis job.
+- **Consequences:** The pipeline decodes the input (`InputSpec`), not the analyzer, so 2 analyzers can share 1 decode (`Pair`, used by the bad photo scan for quality and screenshot detection). At most `perf_cores() / 2` jobs are in the decode pool, so a thumbnail job waits for at most 1 analysis job.
 
 ## ADR-003: `AnalysisCache` stores the results of all analyzers in one table
 
