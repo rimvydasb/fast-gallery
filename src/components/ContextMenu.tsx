@@ -8,7 +8,7 @@ import {
   openEntry,
   openFolderDialog,
   path,
-  requestTrashFolder,
+  requestTrashItems,
   revealSelection,
   selectedEntries,
   settings,
@@ -101,13 +101,24 @@ export function selectionMenuItems(): MenuItem[] {
     { label: sel.length === 1 ? "Copy" : `Copy ${sel.length} Items`, icon: ICONS.copy, shortcut: "⌘C", action: () => copySelection() },
   );
   // EDIT-06: actions that change files only in edit mode.
-  if (editMode() && sel.some((e) => !e.d)) {
-    items.push({ separator: true, label: "" }, { label: "Move to Trash", icon: ICONS.trash, shortcut: "⌘⌫", danger: true, action: trashSelection });
-  }
-  if (editMode() && one?.d && onePath) {
+  if (editMode()) {
+    const hasFolder = sel.some((e) => e.d);
+    const label = hasFolder
+      ? one
+        ? "Move Folder to Trash…"
+        : `Move ${sel.length} Items to Trash…`
+      : sel.length === 1
+        ? "Move to Trash"
+        : `Move ${sel.length} Items to Trash`;
     items.push(
       { separator: true, label: "" },
-      { label: "Move Folder to Trash…", icon: ICONS.trash, danger: true, action: () => requestTrashFolder(onePath) },
+      {
+        label,
+        icon: ICONS.trash,
+        shortcut: "⌘⌫",
+        danger: true,
+        action: hasFolder ? () => requestTrashItems(sel) : trashSelection,
+      },
     );
   }
   return items;

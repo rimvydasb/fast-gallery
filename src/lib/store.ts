@@ -356,7 +356,12 @@ export async function trashPaths(paths: string[]): Promise<string[]> {
 
 /** Trash from the grid; the selection moves to the next tile (FILE-07). */
 export async function trashSelection() {
-  const sel = selectedEntries().filter((e) => !e.d);
+  const picked = selectedEntries();
+  if (picked.some((e) => e.d)) {
+    requestTrashItems(picked);
+    return;
+  }
+  const sel = picked;
   if (sel.length === 0) return;
   const all = entries();
   const lastIdx = Math.max(...sel.map((e) => all.indexOf(e)));
@@ -427,27 +432,36 @@ export async function toggleFavorite(p: string) {
   toast(s.favorites.includes(p) ? `Added “${baseName(p)}” to Favorites.` : `Removed “${baseName(p)}” from Favorites.`, "info");
 }
 
-// ---------- Delete folder (edit mode) ----------
+// ---------- Delete folders / mixed selections (edit mode) ----------
 
-/** The folder that waits for a delete confirmation, or null. */
-export const [folderToDelete, setFolderToDelete] = createSignal<string | null>(null);
-
-/** Asks for a confirmation before a folder moves to the Trash. Requires edit mode. */
-export function requestTrashFolder(folderPath: string) {
-  if (!editMode()) {
-    toast("Turn on edit mode (⌘E) to move folders to the Trash.", "info");
-    return;
-  }
-  setFolderToDelete(folderPath);
+export interface DeleteRequest {
+  folders: string[];
+  files: string[];
 }
 
-/** Moves the whole folder to the Trash (undo with ⌘Z) and refreshes the listing. */
-export async function trashFolder(folderPath: string) {
-  setFolderToDelete(null);
-  const done = await trashPaths([folderPath]);
+/** The items that wait for a delete confirmation, or null. */
+export const [deleteRequest, setDeleteRequest] = createSignal<DeleteRequest | null>(null);
+
+/** Asks for a confirmation before items that include folders move to the Trash. Requires edit mode. */
+export function requestTrashItems(items: Entry[]) {
+  if (!editMode()) {
+    toast("Turn on edit mode (⌘E) to move items to the Trash.", "info");
+    return;
+  }
+  if (items.length === 0) return;
+  setDeleteRequest({
+    folders: items.filter((e) => e.d).map(entryPath),
+    files: items.filter((e) => !e.d).map(entryPath),
+  });
+}
+
+/** Moves the folders and files to the Trash (undo with ⌘Z) and refreshes the listing. */
+export async function trashItems(req: DeleteRequest) {
+  setDeleteRequest(null);
+  const done = await trashPaths([...req.folders, ...req.files]);
   if (done.length === 0) return;
-  const name = baseName(folderPath);
-  const remaining = entries().filter((e) => !(e.d && e.n === name));
+  const gone = new Set(done.map(baseName));
+  const remaining = entries().filter((e) => !gone.has(e.n));
   batch(() => {
     setEntries(remaining);
     clearSelection();

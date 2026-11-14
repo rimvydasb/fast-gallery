@@ -1,6 +1,6 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { api, baseName, FolderPreview } from "../lib/api";
-import { folderToDelete, setFolderToDelete, sort, trashFolder } from "../lib/store";
+import { deleteRequest, setDeleteRequest, sort, trashItems } from "../lib/store";
 import { imageCount, plural } from "../lib/format";
 import { QueuedThumb } from "./Tile";
 import { Icon } from "./Toolbar";
@@ -15,9 +15,11 @@ export function DeleteFolderDialog() {
   let confirmBtn: HTMLButtonElement | undefined;
 
   createEffect(() => {
-    const folder = folderToDelete();
+    const req = deleteRequest();
     setPreview(null);
-    if (!folder) return;
+    // A preview only makes sense for one folder on its own.
+    if (!req || req.folders.length !== 1 || req.files.length > 0) return;
+    const folder = req.folders[0];
     let stale = false;
     onCleanup(() => (stale = true));
     api
@@ -29,10 +31,10 @@ export function DeleteFolderDialog() {
     queueMicrotask(() => confirmBtn?.focus());
   });
 
-  const close = () => setFolderToDelete(null);
+  const close = () => setDeleteRequest(null);
   const confirm = () => {
-    const f = folderToDelete();
-    if (f) trashFolder(f);
+    const r = deleteRequest();
+    if (r) trashItems(r);
   };
 
   const onKey = (e: KeyboardEvent) => {
@@ -47,8 +49,10 @@ export function DeleteFolderDialog() {
   };
 
   return (
-    <Show when={folderToDelete()}>
-      {(folder) => {
+    <Show when={deleteRequest()}>
+      {(req) => {
+        const single = () => req().folders.length === 1 && req().files.length === 0;
+        const total = () => req().folders.length + req().files.length;
         const shown = () => preview()?.images.slice(0, MAX_THUMBS) ?? [];
         const more = () => Math.max(0, (preview()?.count ?? 0) - shown().length);
         return (
@@ -67,11 +71,30 @@ export function DeleteFolderDialog() {
                 </div>
                 <div class="dialog-heading">
                   <h2 id="dlg-title">
-                    Move <span class="dialog-name">“{baseName(folder())}”</span> to the Trash?
+                    <Show
+                      when={single()}
+                      fallback={
+                        <>
+                          Move <span class="dialog-name">{plural(total(), "item", "items")}</span> to the Trash?
+                        </>
+                      }
+                    >
+                      Move <span class="dialog-name">“{baseName(req().folders[0])}”</span> to the Trash?
+                    </Show>
                   </h2>
                   <p class="dialog-count">
-                    <Show when={preview()} fallback="Counting images…">
-                      {(p) => <>{imageCount(p().count, p().more)} in this folder</>}
+                    <Show
+                      when={single()}
+                      fallback={[
+                        req().folders.length > 0 ? plural(req().folders.length, "folder", "folders") : "",
+                        req().files.length > 0 ? plural(req().files.length, "image", "images") : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" and ")}
+                    >
+                      <Show when={preview()} fallback="Counting images…">
+                        {(p) => <>{imageCount(p().count, p().more)} in this folder</>}
+                      </Show>
                     </Show>
                   </p>
                 </div>
@@ -93,7 +116,7 @@ export function DeleteFolderDialog() {
                 </div>
               </Show>
               <p class="dialog-sub">
-                The folder and everything in it will be moved to the Trash. You can undo this with{" "}
+                {single() ? "The folder and everything in it" : req().folders.length > 0 ? "The items and everything in the folders" : "The items"} will be moved to the Trash. You can undo this with{" "}
                 <kbd>⌘Z</kbd>.
               </p>
               <div class="dialog-actions">
