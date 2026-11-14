@@ -4,6 +4,9 @@
 
 ### Grouping
 
+> Please note that you will need to decide the best UX for this new functionality. Existing UX and GUI could be changed
+> if needed.
+
 - [ ] New grouping UX and mechanics are introduced. When user selects grouping, then photos view is divided with
   horizontal lines that group photos in one or another way:
     - [ ] Grouping by date (created, modified, etc.)
@@ -27,6 +30,7 @@
     - [ ] Low - same as medium, but slightly similar photos.
 
 Ideas that can be used or not (take them as proposal, not strict requirement):
+
 - Perceptual Hashing (pHash) + compared using Hamming distance. If slow, then dHash.
 - `image_hasher`
 - combine temporal proximity (timestamps) with tight perceptual hash verification
