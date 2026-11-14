@@ -1,21 +1,22 @@
 import { For, Show } from "solid-js";
-import { navigate, path } from "../lib/store";
+import { location, path } from "../lib/navigation";
+import { Crumb, providerFor } from "../lib/locations";
+import { runAction } from "../lib/actions";
+import { inTaskTree, task } from "../lib/tasks";
+import { TaskIndicator } from "./TaskIndicator";
 
-/** NAV-03, NAV-04: a breadcrumb bar with each component of the current path. */
+/**
+ * NAV-03, NAV-04: a breadcrumb bar with the components of the current location, from its provider.
+ * The component of a task root shows the task indicator while the current folder is in its tree.
+ */
 export function Breadcrumbs() {
-  const parts = () => {
-    const p = path();
-    if (!p) return [];
-    const segs = p.split("/").filter(Boolean);
-    const out = [{ label: "/", target: "/" }];
-    let acc = "";
-    for (const s of segs) {
-      acc += `/${s}`;
-      out.push({ label: s, target: acc });
-    }
-    // Show "/Volumes/X" as one component.
-    if (out.length > 2 && out[1].label === "Volumes") out.splice(0, 2);
-    return out;
+  const parts = (): Crumb[] => {
+    const l = location();
+    return l ? providerFor(l).crumbs(l) : [];
+  };
+  const showTaskOn = (c: Crumb) => {
+    const t = task();
+    return !!t && c.target?.kind === "disk" && c.target.path === t.root && inTaskTree(path(), t);
   };
   return (
     <nav class="breadcrumbs" aria-label="Path">
@@ -29,12 +30,16 @@ export function Breadcrumbs() {
             </Show>
             <button
               class="crumb"
-              classList={{ last: i() === parts().length - 1 }}
+              classList={{ last: i() === parts().length - 1, group: !c.target }}
               aria-current={i() === parts().length - 1 ? "location" : undefined}
-              title={c.target}
-              onClick={() => navigate(c.target)}
+              title={c.title}
+              disabled={!c.target}
+              onClick={() => c.target && runAction("nav.open", c.target)}
             >
-              {c.label === "/" ? "Computer" : c.label}
+              {c.label}
+              <Show when={showTaskOn(c)}>
+                <TaskIndicator variant="crumb" root={c.target?.kind === "disk" ? c.target.path : null} />
+              </Show>
             </button>
           </>
         )}

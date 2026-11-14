@@ -7,13 +7,18 @@ export interface SortSpec {
   desc: boolean;
 }
 
-/** A directory entry: n = name, d = folder, s = size, m = mtime ms, t = date taken s. */
+/**
+ * A directory entry: n = name, d = folder, s = size, m = mtime ms, t = date taken s.
+ * Collection entries also have p = absolute path and b = badge codes.
+ */
 export interface Entry {
   n: string;
   d: boolean;
   s: number;
   m: number;
   t?: number;
+  p?: string;
+  b?: string[];
 }
 
 export interface DirListing {
@@ -53,10 +58,66 @@ export interface Settings {
   recents: string[];
   lastFolder: string | null;
   folderPrefs: Record<string, FolderPrefs>;
+  qualitySensitivity: QualitySensitivity;
+  scanCap: number;
+}
+
+export type QualitySensitivity = "low" | "medium" | "high";
+
+export type TaskKind = "scanBadPhotos";
+
+export interface TaskStatus {
+  id: number;
+  kind: TaskKind;
+  window: string;
+  root: string | null;
+  locks: string[];
+  done: number;
+  total: number;
+}
+
+export interface TaskDone {
+  id: number;
+  kind: TaskKind;
+  window: string;
+  root: string | null;
+  outcome: "finished" | "cancelled" | "failed";
+  result: unknown;
+}
+
+/** `TaskDone.result` of a bad photo scan. */
+export interface ScanResult {
+  collectionId: string;
+  found: number;
+  scanned: number;
+  capped: boolean;
+}
+
+export interface CollectionSummary {
+  id: string;
+  name: string;
+  icon: string;
+  count: number;
+}
+
+export interface QualityMetrics {
+  lapVar: number;
+  lapVarLocal: number;
+  tenengrad: number;
+  brenner: number;
+  meanLuma: number;
+  stdLuma: number;
+  clipDark: number;
+  clipBright: number;
+}
+
+export interface QualityInfo {
+  metrics: QualityMetrics;
+  flags: ("blurry" | "underexposed" | "overexposed" | "lowContrast")[];
 }
 
 export interface CmdError {
-  kind: "permission" | "notFound" | "notDir" | "editOff" | "other";
+  kind: "permission" | "notFound" | "notDir" | "editOff" | "busy" | "locked" | "other";
   message: string;
 }
 
@@ -138,6 +199,13 @@ export const api = {
   toggleFavorite: (path: string) => invoke<Settings>("toggle_favorite", { path }),
   setFolderPrefs: (path: string, prefs: FolderPrefs) => invoke<void>("set_folder_prefs", { path, prefs }),
   homeDir: () => invoke<string>("home_dir"),
+  getTaskStatus: () => invoke<TaskStatus | null>("get_task_status"),
+  cancelTask: () => invoke<void>("cancel_task"),
+  startScanBadPhotos: (root: string) => invoke<TaskStatus>("start_scan_bad_photos", { root }),
+  listCollections: () => invoke<CollectionSummary[]>("list_collections"),
+  listCollection: (id: string, sort: SortSpec) => invoke<DirListing>("list_collection", { id, sort }),
+  removeCollection: (id: string) => invoke<void>("remove_collection", { id }),
+  getQuality: (path: string) => invoke<QualityInfo | null>("get_quality", { path }),
 };
 
 /** thumb:// URL. The mtime in the URL makes a changed file get a new URL. */

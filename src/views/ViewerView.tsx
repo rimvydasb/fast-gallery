@@ -7,14 +7,12 @@ import {
   images,
   infoOpen,
   selectOnly,
-  setInfoOpen,
   setSettings,
   setViewerIndex,
   settings,
-  toggleEditMode,
-  trashViewerImage,
   viewerIndex,
 } from "../lib/store";
+import { actionState, runAction } from "../lib/actions";
 import { Icon, ICONS } from "../components/Toolbar";
 import { scrollToIndex } from "./GridView";
 import { prefersReducedMotion } from "../lib/ui";
@@ -398,15 +396,21 @@ export function ViewerView() {
             ))}
           </select>
         </label>
-        <button class="tb-btn edit-toggle" classList={{ on: editMode() }} title="Edit Mode (⌘E)" aria-pressed={editMode()} aria-label="Edit mode" onClick={toggleEditMode}>
+        <button class="tb-btn edit-toggle" classList={{ on: editMode() }} title="Edit Mode (⌘E)" aria-pressed={editMode()} aria-label="Edit mode" onClick={() => runAction("view.toggleEditMode")}>
           <Icon d={ICONS.edit} />
         </button>
         <Show when={editMode()}>
-          <button class="tb-btn danger" title="Move to Trash (⌘⌫)" aria-label="Move to Trash" onClick={trashViewerImage}>
+          <button
+            class="tb-btn danger"
+            title={actionState("file.trashViewerImage").reason ?? "Move to Trash (⌘⌫)"}
+            aria-label="Move to Trash"
+            disabled={!actionState("file.trashViewerImage").enabled}
+            onClick={() => runAction("file.trashViewerImage")}
+          >
             <Icon d={ICONS.trash} />
           </button>
         </Show>
-        <button class="tb-btn" classList={{ on: infoOpen() }} title="Info (⌘I)" aria-pressed={infoOpen()} aria-label="Info" onClick={() => setInfoOpen(!infoOpen())}>
+        <button class="tb-btn" classList={{ on: infoOpen() }} title="Info (⌘I)" aria-pressed={infoOpen()} aria-label="Info" onClick={() => runAction("view.toggleInfo")}>
           <Icon d={ICONS.info} />
         </button>
       </header>

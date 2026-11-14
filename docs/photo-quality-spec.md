@@ -786,53 +786,53 @@ flowchart TD
 
 ### Tasks and busy state
 
-- [ ] **QUAL-01** `TaskRunner` MUST run at most 1 task at a time for the whole app.
-- [ ] **QUAL-02** While a task runs, all windows MUST block each `fileChange` action whose target conflicts with the
+- [x] **QUAL-01** `TaskRunner` MUST run at most 1 task at a time for the whole app.
+- [x] **QUAL-02** While a task runs, all windows MUST block each `fileChange` action whose target conflicts with the
   task lock.
-- [ ] **QUAL-03** While a task runs, the commands of D6 MUST return the error `locked` or `busy`.
-- [ ] **QUAL-04** While a task runs, the `navigation` and `view` actions MUST stay available in all folders.
-- [ ] **QUAL-05** The user MUST be able to cancel a running task from the Collections menu. The context menu of the
+- [x] **QUAL-03** While a task runs, the commands of D6 MUST return the error `locked` or `busy`.
+- [x] **QUAL-04** While a task runs, the `navigation` and `view` actions MUST stay available in all folders.
+- [x] **QUAL-05** The user MUST be able to cancel a running task from the Collections menu. The context menu of the
   task root and of each folder in its tree MUST also offer "Cancel Scan".
-- [ ] **QUAL-06** Each action MUST be defined once in `actions.ts`. All call sites MUST use `runAction` and `isEnabled`.
+- [x] **QUAL-06** Each action MUST be defined once in `actions.ts`. All call sites MUST use `runAction` and `isEnabled`.
 
 ### Scan
 
-- [ ] **QUAL-07** The context menu of the grid background and of 1 selected folder tile MUST have "Scan for Bad
+- [x] **QUAL-07** The context menu of the grid background and of 1 selected folder tile MUST have "Scan for Bad
   Photos".
-- [ ] **QUAL-30** While a scan runs, "Scan for Bad Photos" MUST be disabled in the context menus of all other folders.
-- [ ] **QUAL-08** The app MUST NOT start a scan without a user request. The scan MUST start with no dialog.
-- [ ] **QUAL-09** The scan MUST read the scan root and all its subfolders, depth first, with the rules FPV-09 and
+- [x] **QUAL-30** While a scan runs, "Scan for Bad Photos" MUST be disabled in the context menus of all other folders.
+- [x] **QUAL-08** The app MUST NOT start a scan without a user request. The scan MUST start with no dialog.
+- [x] **QUAL-09** The scan MUST read the scan root and all its subfolders, depth first, with the rules FPV-09 and
   FPV-10.
-- [ ] **QUAL-10** The scan MUST stop at the scan cap.
-- [ ] **QUAL-11** The scanned folder MUST show an animated scan icon and the percentage while the scan runs.
-- [ ] **QUAL-12** After a finished scan, the source window MUST open "Bad photos" if it still shows the origin
+- [x] **QUAL-10** The scan MUST stop at the scan cap.
+- [x] **QUAL-11** The scanned folder MUST show an animated scan icon and the percentage while the scan runs.
+- [x] **QUAL-12** After a finished scan, the source window MUST open "Bad photos" if it still shows the origin
   location. Else it MUST offer an Open button.
-- [ ] **QUAL-13** The app MUST show the `ScanCapDialog` if the scan stopped at the cap and the tree has more photos.
+- [x] **QUAL-13** The app MUST show the `ScanCapDialog` if the scan stopped at the cap and the tree has more photos.
 
 ### Pipeline and analysis
 
-- [ ] **QUAL-14** The pipeline MUST NOT contain code that is specific to photo quality.
-- [ ] **QUAL-15** `QualityAnalyzer` MUST compute the metrics on a grayscale buffer with a long edge of `ANALYSIS_EDGE`.
-- [ ] **QUAL-16** `BadPhotoSink` MUST use `lap_var_local` for the `blurry` flag.
-- [ ] **QUAL-17** The pipeline MUST store analyzer results in the `analysis` table and reuse rows that are not stale.
-- [ ] **QUAL-18** The pipeline MUST keep at most `perf_cores() / 2` jobs in the decode pool.
+- [x] **QUAL-14** The pipeline MUST NOT contain code that is specific to photo quality.
+- [x] **QUAL-15** `QualityAnalyzer` MUST compute the metrics on a grayscale buffer with a long edge of `ANALYSIS_EDGE`.
+- [x] **QUAL-16** `BadPhotoSink` MUST use `lap_var_local` for the `blurry` flag.
+- [x] **QUAL-17** The pipeline MUST store analyzer results in the `analysis` table and reuse rows that are not stale.
+- [x] **QUAL-18** The pipeline MUST keep at most `perf_cores() / 2` jobs in the decode pool.
 
 ### Collections and virtual folders
 
-- [ ] **QUAL-19** After a finished scan, the app MUST replace the "Bad photos" collection.
-- [ ] **QUAL-20** The collections MUST exist only in memory and MUST be shared by all windows.
-- [ ] **QUAL-21** The toolbar MUST have a Collections button with a menu that opens each collection.
-- [ ] **QUAL-22** A virtual folder MUST support the viewer, the info panel, sort, selection, and FILE-01 to FILE-14.
-- [ ] **QUAL-23** Each tile in a virtual folder MUST show its badges. The info panel MUST show the quality metrics.
+- [x] **QUAL-19** After a finished scan, the app MUST replace the "Bad photos" collection.
+- [x] **QUAL-20** The collections MUST exist only in memory and MUST be shared by all windows.
+- [x] **QUAL-21** The toolbar MUST have a Collections button with a menu that opens each collection.
+- [x] **QUAL-22** A virtual folder MUST support the viewer, the info panel, sort, selection, and FILE-01 to FILE-14.
+- [x] **QUAL-23** Each tile in a virtual folder MUST show its badges. The info panel MUST show the quality metrics.
 
 ### Settings, safety, and performance
 
-- [ ] **QUAL-24** The analysis of one 24 MP JPEG MUST take 40 ms or less on the reference machine.
-- [ ] **QUAL-25** Settings MUST contain the sensitivity.
-- [ ] **QUAL-26** Settings MUST contain the scan cap as a slider: minimum 100, default 200, maximum 1,000.
-- [ ] **QUAL-27** The app MUST NOT change or move a file because of a scan result.
-- [ ] **QUAL-28** PERF-06 and PERF-07 MUST pass while a scan runs.
-- [ ] **QUAL-29** The implementation MUST NOT add a new crate dependency.
+- [x] **QUAL-24** The analysis of one 24 MP JPEG MUST take 40 ms or less on the reference machine.
+- [x] **QUAL-25** Settings MUST contain the sensitivity.
+- [x] **QUAL-26** Settings MUST contain the scan cap as a slider: minimum 100, default 200, maximum 1,000.
+- [x] **QUAL-27** The app MUST NOT change or move a file because of a scan result.
+- [x] **QUAL-28** PERF-06 and PERF-07 MUST pass while a scan runs.
+- [x] **QUAL-29** The implementation MUST NOT add a new crate dependency.
 
 > Rationale for QUAL-24: PERF-07 allows 30 ms for a 256 px thumbnail. The analysis decodes at 1024 px, which costs
 > more, and adds about 1 MP of kernel work. At 40 ms, a scan at the maximum cap of 1,000 new photos takes about 20 s
@@ -847,25 +847,25 @@ flowchart TD
 
 ## Verification
 
-- [ ] Unit tests in `kernels.rs`: a flat image gives 0 for all sharpness metrics. A box-blurred checkerboard gives
+- [x] Unit tests in `kernels.rs`: a flat image gives 0 for all sharpness metrics. A box-blurred checkerboard gives
   lower values than the original checkerboard.
-- [ ] Unit tests in `quality/sink.rs`: a black image gets `underexposed`; a white image gets `overexposed`.
-- [ ] Unit tests in `walk.rs` use a cap of 100. Trees with 99, 100, and 101 photos give `capped` = false, false,
+- [x] Unit tests in `quality/sink.rs`: a black image gets `underexposed`; a white image gets `overexposed`.
+- [x] Unit tests in `walk.rs` use a cap of 100. Trees with 99, 100, and 101 photos give `capped` = false, false,
   true.
-- [ ] Unit tests in `walk.rs`: the walk skips hidden folders, package folders, and symbolic links.
-- [ ] Unit tests in `run.rs` use a test analyzer. `accept` gets the walk order, and a second run reads only the cache.
-- [ ] Unit tests in `run.rs`: a version change analyzes again, and a cancel stops the walk.
-- [ ] Unit tests in `tasks/mod.rs`: a second `start` returns `busy`; `guard` fails while a task runs.
-- [ ] Unit tests in `tasks/mod.rs`: with a lock on `/a/b`, `guard_paths` rejects `/a/b`, `/a/b/c.jpg`, and `/a`. It
+- [x] Unit tests in `walk.rs`: the walk skips hidden folders, package folders, and symbolic links.
+- [x] Unit tests in `run.rs` use a test analyzer. `accept` gets the walk order, and a second run reads only the cache.
+- [x] Unit tests in `run.rs`: a version change analyzes again, and a cancel stops the walk.
+- [x] Unit tests in `tasks/mod.rs`: a second `start` returns `busy`; `guard` fails while a task runs.
+- [x] Unit tests in `tasks/mod.rs`: with a lock on `/a/b`, `guard_paths` rejects `/a/b`, `/a/b/c.jpg`, and `/a`. It
   accepts `/a/x.jpg` and `/a/bb`.
-- [ ] Unit tests in `collections.rs`: `remove_paths` and `restore_paths` keep the order.
-- [ ] Unit tests for `actions.ts` (or a scripted run): `fileChange` actions are disabled only for targets in the lock.
+- [x] Unit tests in `collections.rs`: `remove_paths` and `restore_paths` keep the order.
+- [x] Unit tests for `actions.ts` (or a scripted run): `fileChange` actions are disabled only for targets in the lock.
   `navigation` and `view` actions stay enabled.
-- [ ] Benchmark row in `src-tauri/benches/core.rs`: analysis of the generated 24 MP photo (QUAL-24). Record the result
+- [x] Benchmark row in `src-tauri/benches/core.rs`: analysis of the generated 24 MP photo (QUAL-24). Record the result
   in `docs/benchmarks.md`.
-- [ ] Calibration example `src-tauri/examples/quality_dump.rs`: prints the metrics of each image in a folder as CSV.
+- [x] Calibration example `src-tauri/examples/quality_dump.rs`: prints the metrics of each image in a folder as CSV.
   Run it on a labelled set of 50 or more sharp and 50 or more blurry photos. Set `blur_threshold` from the result.
-- [ ] Scripted run with `FG_DEV_SCRIPT`: start a scan on a tree with 10,000 photos and scroll the grid. PERF-06 and
+- [x] Scripted run with `FG_DEV_SCRIPT`: start a scan on a tree with 10,000 photos and scroll the grid. PERF-06 and
   PERF-08 MUST pass (QUAL-28). ⌘⌫ in the scanned tree shows the toast; ⌘⌫ outside it moves the file.
 
 > Context: the `examples/example gallery/` folder has 6 photos in 3 folders. It is a good test for the recursive walk,
@@ -876,24 +876,25 @@ flowchart TD
 
 The generic parts come first, so the photo quality feature is their first client.
 
-- [ ] Add `tasks/mod.rs` with `TaskRunner`, the task lock, the events, and the unit tests (D1).
-- [ ] Add `guard_paths` to `trash_files` and `undo_trash`, and `guard` to `clear_cache` and `remove_collection` (D6).
-- [ ] Add the `analysis` table and `AnalysisCache` (D3).
-- [ ] Add `pipeline/` with `TreeWalker`, the traits, `AnalysisInput`, `run_pipeline`, and the unit tests (D2).
-- [ ] Add `collections.rs` with `CollectionStore` and its unit tests. Connect `trash_files` and `undo_trash`.
-- [ ] Add `Entry.p` and `Entry.b` in Rust and TypeScript. Change `entryPath` to use `p`.
-- [ ] Add `locations.ts` with `DiskProvider` and `CollectionProvider` (D5).
-- [ ] Move navigation and history from `store.ts` to `navigation.ts`, based on `Location`.
-- [ ] Add `actions.ts` and `tasks.ts`. Move all existing actions into the registry (D4).
-- [ ] Change all call sites to `runAction` and `isEnabled`. The call sites are listed in Context and Gap.
-- [ ] Add `TaskIndicator.tsx` on folder tiles, the last breadcrumb, the toolbar, and the status bar.
-- [ ] Add `quality/kernels.rs`, `QualityAnalyzer`, and `BadPhotoSink`.
-- [ ] Add `start_scan_bad_photos` and the other commands, permissions, and capability entries.
-- [ ] Add the toast action. Add the Collections button, the context menu items, `ScanCapDialog.tsx`, and the auto-open.
-- [ ] Add the virtual folder breadcrumbs, the tile badges, the empty state, and the info panel rows.
-- [ ] Add `quality_sensitivity` and `scan_cap` to `Settings`, with the clamp, and to `SettingsView.tsx`.
-- [ ] Add the benchmark row and the calibration example. Calibrate the thresholds.
-- [ ] After implementation, move D1 to D6 to `docs/architecture-adr.md`. Add the QUAL requirements to
+- [x] Add `tasks/mod.rs` with `TaskRunner`, the task lock, the events, and the unit tests (D1).
+- [x] Add `guard_paths` to `trash_files` and `undo_trash`, and `guard` to `clear_cache` and `remove_collection` (D6).
+- [x] Add the `analysis` table and `AnalysisCache` (D3).
+- [x] Add `pipeline/` with `TreeWalker`, the traits, `AnalysisInput`, `run_pipeline`, and the unit tests (D2).
+- [x] Add `collections.rs` with `CollectionStore` and its unit tests. Connect `trash_files` and `undo_trash`.
+- [x] Add `Entry.p` and `Entry.b` in Rust and TypeScript. Change `entryPath` to use `p`.
+- [x] Add `locations.ts` with `DiskProvider` and `CollectionProvider` (D5).
+- [x] Move navigation and history from `store.ts` to `navigation.ts`, based on `Location`.
+- [x] Add `actions.ts` and `tasks.ts`. Move all existing actions into the registry (D4).
+- [x] Change all call sites to `runAction` and `isEnabled`. The call sites are listed in Context and Gap.
+- [x] Add `TaskIndicator.tsx` on folder tiles, the last breadcrumb, the toolbar, and the status bar.
+- [x] Add `quality/kernels.rs`, `QualityAnalyzer`, and `BadPhotoSink`.
+- [x] Add `start_scan_bad_photos` and the other commands, permissions, and capability entries.
+- [x] Add the toast action. Add the Collections button, the context menu items, `ScanCapDialog.tsx`, and the auto-open.
+- [x] Add the virtual folder breadcrumbs, the tile badges, the empty state, and the info panel rows.
+- [x] Add `quality_sensitivity` and `scan_cap` to `Settings`, with the clamp, and to `SettingsView.tsx`.
+- [x] Add the benchmark row and the calibration example.
+- [ ] Calibrate the thresholds on a labelled set of 50 or more sharp and 50 or more blurry photos.
+- [x] After implementation, move D1 to D6 to `docs/architecture-adr.md`. Add the QUAL requirements to
   `docs/requirements.md`.
 
 > Rationale for the order: the action registry and the location refactor touch most frontend files. They are done

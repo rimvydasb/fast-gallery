@@ -1,8 +1,16 @@
 import { createResource, createSignal, onMount, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { api, Settings, SortKey } from "../lib/api";
+import { api, errorMessage, QualitySensitivity, Settings, SortKey } from "../lib/api";
 import { formatBytes } from "../lib/format";
+import { initTasks } from "../lib/tasks";
+import { actionState, runAction } from "../lib/actions";
+
+const SENSITIVITIES: { value: QualitySensitivity; label: string }[] = [
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
 
 const CACHE_LIMITS = [256, 512, 1024, 2048, 5120, 10240, 20480];
 
@@ -11,10 +19,15 @@ export function SettingsView() {
   const [s, setS] = createSignal<Settings | null>(null);
   const [cache, { refetch }] = createResource(() => api.getCacheInfo());
   const [clearing, setClearing] = createSignal(false);
+  const [clearError, setClearError] = createSignal<string | null>(null);
+  // The value under the slider while it moves; saved on release.
+  const [capDraft, setCapDraft] = createSignal<number | null>(null);
 
   onMount(async () => {
     setS(await api.getSettings());
     await listen<Settings>("settings-changed", (e) => setS(e.payload));
+    // D6: Clear Cache is not available while a task runs.
+    await initTasks();
     await getCurrentWindow().show();
   });
 
@@ -113,16 +126,69 @@ export function SettingsView() {
                   <button
                     type="button"
                     class="btn"
-                    disabled={clearing()}
+                    disabled={clearing() || !actionState("data.clearCache").enabled}
+                    title={actionState("data.clearCache").reason ?? undefined}
                     onClick={async () => {
                       setClearing(true);
-                      await api.clearCache();
+                      setClearError(null);
+                      try {
+                        await runAction("data.clearCache");
+                      } catch (e) {
+                        setClearError(errorMessage(e));
+                      }
                       await refetch();
                       setClearing(false);
                     }}
                   >
                     {clearing() ? "Clearing…" : "Clear Cache"}
                   </button>
+                </div>
+              </div>
+              <Show when={clearError() ?? actionState("data.clearCache").reason}>
+                {(m) => (
+                  <div class="field">
+                    <span />
+                    <p class="hint">{m()}</p>
+                  </div>
+                )}
+              </Show>
+            </fieldset>
+            <fieldset>
+              <legend>Bad photo scan</legend>
+              <div class="field">
+                <span class="label" id="sens-label">
+                  Sensitivity
+                </span>
+                {/* QUAL-25: a 3-way control; it changes only the blur threshold, so no new analysis. */}
+                <div class="segmented" role="radiogroup" aria-labelledby="sens-label">
+                  {SENSITIVITIES.map((o) => (
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={v().qualitySensitivity === o.value}
+                      classList={{ on: v().qualitySensitivity === o.value }}
+                      onClick={() => update({ qualitySensitivity: o.value })}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div class="field">
+                <label for="scancap">Bad photo scan limit</label>
+                <div class="inline">
+                  {/* QUAL-26: 100 to 1,000 photos, step 100, default 200. */}
+                  <input
+                    id="scancap"
+                    type="range"
+                    min={100}
+                    max={1000}
+                    step={100}
+                    value={capDraft() ?? v().scanCap}
+                    onInput={(e) => setCapDraft(Number(e.currentTarget.value))}
+                    onChange={(e) => update({ scanCap: Number(e.currentTarget.value) }).then(() => setCapDraft(null))}
+                  />
+                  <output>{(capDraft() ?? v().scanCap).toLocaleString()} photos</output>
                 </div>
               </div>
             </fieldset>

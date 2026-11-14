@@ -11,10 +11,11 @@ import {
   selection,
   setEditModeSignal,
   setEntries,
-  setPath,
+ 
   setRenameRequest,
   setSelection,
 } from "./store";
+import { setPath } from "./navigation";
 import { setToasts, toasts } from "./toast";
 
 const DIR = "/pics";

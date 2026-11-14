@@ -398,6 +398,45 @@ These actions are available in both modes.
 - [x] **A11Y-02** Tiles MUST have accessible names for VoiceOver.
 - [ ] **A11Y-03** The app SHOULD respect the macOS "Reduce motion" setting.
 
+### Photo Quality
+
+The user scans a folder tree for bad photos from the context menu. The design is in `photo-quality-spec.md`; the
+decisions are ADR-001 to ADR-006 in `architecture-adr.md`.
+
+- [x] **QUAL-01** `TaskRunner` MUST run at most 1 task at a time for the whole app.
+- [x] **QUAL-02** While a task runs, all windows MUST block each `fileChange` action whose target conflicts with the task lock.
+- [x] **QUAL-03** While a task runs, `trash_files`, `undo_trash`, and `rename_file` MUST return the error `locked` for a path in the task lock, and `clear_cache`, `remove_collection`, and each task start command MUST return the error `busy`.
+- [x] **QUAL-04** While a task runs, the `navigation` and `view` actions MUST stay available in all folders.
+- [x] **QUAL-05** The user MUST be able to cancel a running task from the Collections menu. The context menu of the task root and of each folder in its tree MUST also offer "Cancel Scan".
+- [x] **QUAL-06** Each action MUST be defined once in `actions.ts`. All call sites MUST use `runAction` and `isEnabled`.
+- [x] **QUAL-07** The context menu of the grid background and of 1 selected folder tile MUST have "Scan for Bad Photos".
+- [x] **QUAL-08** The app MUST NOT start a scan without a user request. The scan MUST start with no dialog.
+- [x] **QUAL-09** The scan MUST read the scan root and all its subfolders, depth first, with the rules FPV-09 and FPV-10.
+- [x] **QUAL-10** The scan MUST stop at the scan cap.
+- [x] **QUAL-11** The scanned folder MUST show an animated scan icon and the percentage while the scan runs.
+- [x] **QUAL-12** After a finished scan, the source window MUST open "Bad photos" if it still shows the origin location. Else it MUST offer an Open button.
+- [x] **QUAL-13** The app MUST show the `ScanCapDialog` if the scan stopped at the cap and the tree has more photos.
+- [x] **QUAL-14** The pipeline MUST NOT contain code that is specific to photo quality.
+- [x] **QUAL-15** `QualityAnalyzer` MUST compute the metrics on a grayscale buffer with a long edge of `ANALYSIS_EDGE`.
+- [x] **QUAL-16** `BadPhotoSink` MUST use `lap_var_local` for the `blurry` flag.
+- [x] **QUAL-17** The pipeline MUST store analyzer results in the `analysis` table and reuse rows that are not stale.
+- [x] **QUAL-18** The pipeline MUST keep at most `perf_cores() / 2` jobs in the decode pool.
+- [x] **QUAL-19** After a finished scan, the app MUST replace the "Bad photos" collection.
+- [x] **QUAL-20** The collections MUST exist only in memory and MUST be shared by all windows.
+- [x] **QUAL-21** The toolbar MUST have a Collections button with a menu that opens each collection.
+- [x] **QUAL-22** A virtual folder MUST support the viewer, the info panel, sort, selection, and FILE-01 to FILE-14.
+- [x] **QUAL-23** Each tile in a virtual folder MUST show its badges. The info panel MUST show the quality metrics.
+- [x] **QUAL-24** The analysis of one 24 MP JPEG MUST take 40 ms or less on the reference machine.
+- [x] **QUAL-25** Settings MUST contain the sensitivity.
+- [x] **QUAL-26** Settings MUST contain the scan cap as a slider: minimum 100, default 200, maximum 1,000.
+- [x] **QUAL-27** The app MUST NOT change or move a file because of a scan result.
+- [ ] **QUAL-28** PERF-06 and PERF-07 MUST pass while a scan runs.
+- [x] **QUAL-29** The implementation MUST NOT add a new crate dependency.
+- [x] **QUAL-30** While a scan runs, "Scan for Bad Photos" MUST be disabled in the context menus of all other folders.
+
+> Assumption: QUAL-24 is measured on the M4 Pro (25.8 ms, see `benchmarks.md`). The M1 result is not measured yet.
+> QUAL-28 needs the scripted run with 10,000 photos from the Verification section of `photo-quality-spec.md`.
+
 ## Limitations
 
 - The app is a browser and viewer. It does not edit image pixels.

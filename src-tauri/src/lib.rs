@@ -1,10 +1,14 @@
 //! Fast Gallery: a macOS image browser with recursive folder previews.
 
+pub mod collections;
 pub mod commands;
 pub mod decode;
+pub mod pipeline;
 pub mod pools;
 pub mod protocols;
+pub mod quality;
 pub mod scan;
+pub mod tasks;
 pub mod thumbs;
 pub mod watch;
 
@@ -15,10 +19,12 @@ use parking_lot::Mutex;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Emitter, Manager, RunEvent, TitleBarStyle, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
+use collections::CollectionStore;
 use commands::edit::EditModeState;
 use commands::settings::SettingsStore;
 use scan::index::PreviewIndex;
 use scan::preview::FolderPreviewService;
+use tasks::TaskRunner;
 use thumbs::{ThumbCache, ThumbnailService};
 use watch::FsWatcher;
 
@@ -63,6 +69,10 @@ pub struct AppState {
     pub edit: EditModeState,
     pub settings: SettingsStore,
     pub pending_open: Mutex<Option<String>>,
+    /// The 1 running background task and its task lock (D1).
+    pub tasks: Arc<TaskRunner>,
+    /// In-memory collections shown as virtual folders (QUAL-20).
+    pub collections: Arc<CollectionStore>,
 }
 
 static WINDOW_SEQ: AtomicU32 = AtomicU32::new(1);
@@ -242,7 +252,13 @@ pub fn run() {
                 edit: EditModeState::default(),
                 settings,
                 pending_open: Mutex::new(None),
+                tasks: Arc::new(TaskRunner::default()),
+                collections: Arc::new(CollectionStore::default()),
             });
+            let events = handle.clone();
+            app.state::<AppState>().collections.set_listener(Arc::new(move |l| {
+                let _ = events.emit("collections-changed", l);
+            }));
             app.set_menu(build_menu(handle)?)?;
             app.on_menu_event(|app, ev| on_menu(app, ev.id().as_ref()));
             trace("menu set");
@@ -258,6 +274,7 @@ pub fn run() {
                 let st = window.state::<AppState>();
                 st.watcher.unwatch(window.label());
                 st.edit.forget(window.label());
+                st.tasks.cancel_for_window(window.label());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -289,6 +306,13 @@ pub fn run() {
             commands::toggle_favorite,
             commands::set_folder_prefs,
             commands::home_dir,
+            commands::tasks::get_task_status,
+            commands::tasks::cancel_task,
+            commands::quality::start_scan_bad_photos,
+            commands::quality::get_quality,
+            commands::collections::list_collections,
+            commands::collections::list_collection,
+            commands::collections::remove_collection,
             #[cfg(debug_assertions)]
             dev::dev_log,
         ])

@@ -79,6 +79,15 @@ impl EditModeState {
         Ok(to.to_string_lossy().into_owned())
     }
 
+    /// The original paths that `undo` would restore, for the task lock check (D6).
+    pub fn undo_targets(&self, window: &str) -> Vec<String> {
+        self.undo
+            .lock()
+            .get(window)
+            .map(|v| v.iter().map(|(orig, _)| orig.to_string_lossy().into_owned()).collect())
+            .unwrap_or_default()
+    }
+
     /// FILE-05, FILE-17: moves the items of the last move to Trash or rename back to their original location.
     pub fn undo(&self, window: &str) -> Result<Vec<String>, String> {
         if !self.is_on(window) {

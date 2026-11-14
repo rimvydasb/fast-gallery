@@ -1,41 +1,27 @@
 // Keyboard shortcuts (A11Y-01). ⌘N, ⌘O, ⌘, and ⌃⌘F are native menu items; everything else is here.
+// Each command goes through the action registry (D4), so a running task blocks it the same way as a
+// button or a menu item. Cursor movement and viewer controls are local to the views.
 import {
   anchor,
-  copySelection,
   cursor,
   entries,
   entryPath,
-  goBack,
-  goForward,
-  goParent,
-  infoOpen,
-  openEntry,
-  path,
-  revealSelection,
-  selectAll,
   selectedEntries,
   selectOnly,
   selectRange,
   setAnchor,
-  setInfoOpen,
-  setTileSize,
-  tileSize,
-  toggleEditMode,
-  toggleFavorite,
-  toggleHidden,
-  trashSelection,
-  trashViewerImage,
-  undoTrash,
   viewerIndex,
   images,
   clearSelection,
   deleteRequest,
   renameRequest,
 } from "./store";
+import { caps, path } from "./navigation";
+import { runAction } from "./actions";
+import { scanCapInfo } from "./badPhotos";
 import { gridCols, scrollToIndex } from "../views/GridView";
 import * as viewer from "../views/ViewerView";
 import { contextMenuOpen, openContextMenu } from "../components/ContextMenu";
-import { toggleSidebar } from "./ui";
 
 const TILE_STEP = 32;
 
@@ -80,34 +66,38 @@ function gridKey(e: KeyboardEvent): boolean {
   if (cmd && !e.altKey) {
     switch (k) {
       case "ArrowUp":
-        goParent();
+        runAction("nav.parent");
         return true;
       case "ArrowDown": {
         const c = cursor();
-        if (c >= 0) openEntry(c);
+        if (c >= 0) runAction("nav.openEntry", c);
         return true;
       }
       case "a":
-        selectAll();
+        runAction("view.selectAll");
         return true;
-      case "Backspace":
-        trashSelection();
+      case "Backspace": {
+        // A selection with folders asks for a confirmation (DeleteFolderDialog).
+        const sel = selectedEntries();
+        if (sel.some((e) => e.d)) runAction("file.requestTrashItems", sel);
+        else runAction("file.trashSelection");
         return true;
+      }
       case "c":
-        copySelection();
+        runAction("view.copy");
         return true;
       case "d": {
         const sel = selectedEntries();
-        const p = sel.length === 1 && sel[0].d ? entryPath(sel[0]) : path();
-        if (p) toggleFavorite(p);
+        const p = sel.length === 1 && sel[0].d ? entryPath(sel[0]) : caps().favorites ? path() : null;
+        runAction("view.toggleFavorite", p);
         return true;
       }
       case "=":
       case "+":
-        setTileSize(tileSize() + TILE_STEP);
+        runAction("view.tileSize", TILE_STEP);
         return true;
       case "-":
-        setTileSize(tileSize() - TILE_STEP);
+        runAction("view.tileSize", -TILE_STEP);
         return true;
     }
     return false;
@@ -134,7 +124,7 @@ function gridKey(e: KeyboardEvent): boolean {
       return true;
     case "Enter": {
       const c = cursor();
-      if (c >= 0) openEntry(c);
+      if (c >= 0) runAction("nav.openEntry", c);
       return true;
     }
     case "Escape":
@@ -145,7 +135,7 @@ function gridKey(e: KeyboardEvent): boolean {
     if (k === " " && typed === "") {
       // Space opens the viewer at the selected image, like Quick Look.
       const c = cursor();
-      if (c >= 0 && !entries()[c]?.d) openEntry(c);
+      if (c >= 0 && !entries()[c]?.d) runAction("nav.openEntry", c);
       return true;
     }
     typeSelect(k);
@@ -179,12 +169,12 @@ function viewerKey(e: KeyboardEvent): boolean {
         viewer.rotate(-90);
         return true;
       case "Backspace":
-        trashViewerImage();
+        runAction("file.trashViewerImage");
         return true;
       case "c": {
         const vi = viewerIndex();
         const img = vi !== null ? images()[vi] : undefined;
-        if (img) copySelection([entryPath(img)]);
+        if (img) runAction("view.copy", [entryPath(img)]);
         return true;
       }
     }
@@ -226,7 +216,8 @@ function viewerKey(e: KeyboardEvent): boolean {
 }
 
 export function onKeyDown(e: KeyboardEvent) {
-  if (e.defaultPrevented || contextMenuOpen() || deleteRequest() !== null || renameRequest() !== null) return;
+  if (e.defaultPrevented || contextMenuOpen() || deleteRequest() !== null || renameRequest() !== null || scanCapInfo() !== null)
+    return;
   if (isTextInput(e.target)) return;
   const cmd = e.metaKey;
   let handled = false;
@@ -234,41 +225,41 @@ export function onKeyDown(e: KeyboardEvent) {
   // Shortcuts in both views.
   if (cmd && !e.ctrlKey) {
     if (e.altKey && (e.code === "KeyS" || e.key === "s")) {
-      toggleSidebar();
+      runAction("view.toggleSidebar");
       handled = true;
     } else if (!e.altKey) {
       switch (e.key.toLowerCase()) {
         case "i":
-          setInfoOpen(!infoOpen());
+          runAction("view.toggleInfo");
           handled = true;
           break;
         case "e":
-          toggleEditMode();
+          runAction("view.toggleEditMode");
           handled = true;
           break;
         case "z":
           if (!e.shiftKey) {
-            undoTrash();
+            runAction("file.undo");
             handled = true;
           }
           break;
         case "[":
-          if (viewerIndex() === null) goBack();
+          if (viewerIndex() === null) runAction("nav.back");
           handled = true;
           break;
         case "]":
-          if (viewerIndex() === null) goForward();
+          if (viewerIndex() === null) runAction("nav.forward");
           handled = true;
           break;
       }
       if (!handled && e.shiftKey && e.code === "KeyR") {
         const vi = viewerIndex();
         const img = vi !== null ? images()[vi] : undefined;
-        revealSelection(img ? [entryPath(img)] : undefined);
+        runAction("view.reveal", img ? [entryPath(img)] : undefined);
         handled = true;
       }
       if (!handled && e.shiftKey && e.code === "Period" && viewerIndex() === null) {
-        toggleHidden();
+        runAction("view.toggleHidden");
         handled = true;
       }
     }

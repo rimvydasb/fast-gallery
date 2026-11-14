@@ -1,5 +1,7 @@
 import { createSignal, For, onCleanup, Show } from "solid-js";
-import { Entry, FolderPreview, thumbUrl } from "../lib/api";
+import { Entry, FolderPreview, parentPath, thumbUrl } from "../lib/api";
+import { badgeInfo, badgeLabels } from "../lib/badges";
+import { TaskIndicator } from "./TaskIndicator";
 import { requestThumb } from "../lib/thumbQueue";
 import { imageCount } from "../lib/format";
 
@@ -59,6 +61,14 @@ export function ImageTile(props: TileProps) {
     <>
       <div class="tile-media">
         <QueuedThumb path={props.path} mtime={props.entry.m} size={thumbSizeFor(props.tileSize)} priority={props.index} />
+        <Show when={props.entry.b?.length}>
+          {/* QUAL-23: the badges of a collection item, for example "Blurry, Underexposed". */}
+          <div class="tile-badges" title={badgeLabels(props.entry.b)}>
+            <For each={props.entry.b}>
+              {(code) => <span class={`tile-badge ${badgeInfo(code).tone}`}>{badgeInfo(code).label}</span>}
+            </For>
+          </div>
+        </Show>
         <Show when={props.editMode}>
           <button
             class="tile-trash"
@@ -77,7 +87,8 @@ export function ImageTile(props: TileProps) {
           </button>
         </Show>
       </div>
-      <div class="tile-label" title={props.entry.n}>
+      {/* In a collection, the tooltip shows the folder of the file. */}
+      <div class="tile-label" title={props.entry.p ? (parentPath(props.entry.p) ?? props.entry.p) : props.entry.n}>
         {props.entry.n}
       </div>
     </>
@@ -104,6 +115,8 @@ export function FolderTile(props: TileProps) {
             </div>
           </div>
         </div>
+        {/* QUAL-11: the scan indicator on the folder of the task root. */}
+        <TaskIndicator variant="tile" root={props.path} />
       </div>
       <div class="tile-label" title={props.entry.n}>
         <span class="tile-name">{props.entry.n}</span>

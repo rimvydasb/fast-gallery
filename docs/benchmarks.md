@@ -13,6 +13,8 @@ to be higher. An M1 run is still necessary before a release.
 | Measurement                       | Command or method                                                                 |
 |-----------------------------------|-----------------------------------------------------------------------------------|
 | PERF-05, PERF-07 (PERF-14)        | `npm run bench` (runs `cargo bench --bench core` in `src-tauri`)                  |
+| QUAL-24                           | `npm run bench` (row `QUAL-24`)                                                   |
+| Bad photo threshold calibration   | `cargo run --release --example quality_dump -- <folder>` in `src-tauri` (CSV)     |
 | Start-up profile (PERF-02)        | `FG_TRACE_STARTUP=1 "Fast Gallery.app/Contents/MacOS/fast-gallery"`               |
 | Bundle size (PERF-01)             | `npm run build:universal`, then `du -sh` on the `.app`                            |
 | Memory (PERF-03, PERF-04)         | `footprint` on the app process and its WebKit processes                           |
@@ -35,6 +37,7 @@ each time the file changes. Release builds do not contain it.
 | PERF-08 | Grid scroll frame rate                                    | 60 fps    | 60 fps, max frame 19 ms, 0 frames > 25 ms | Pass          |
 | PERF-09 | Viewer: next image that is prefetched                     | ≤ 50 ms   | 2–5 ms                                    | Pass          |
 | PERF-10 | Viewer: next 24 MP JPEG that is not prefetched            | ≤ 200 ms  | 65–138 ms                                 | Pass          |
+| QUAL-24 | Quality analysis of one 24 MP JPEG                        | ≤ 40 ms   | 25.8 ms (kernels 2.8 ms)                  | Pass          |
 
 PERF-03 note: the app process uses 31 MB. The WKWebView processes (WebContent 31 MB, GPU 20 MB, Networking 6 MB) add
 56 MB. The live heap of the app process is 10.6 MB, mostly AppKit and Core Foundation objects. If the budget includes the
@@ -52,6 +55,8 @@ WebKit processes, the result is 7 MB over the budget. This floor comes from the 
 | PERF-07 | thumbnail 256 px, 24 MP JPEG photo (4.7 MB)          | 17.61 ms  | ≤ 30 ms  | PASS   |
 | -       | thumbnail 512 px, 24 MP JPEG photo                   | 18.49 ms  | -        | info   |
 | -       | thumbnail 256 px, 24 MP worst case: noise (8.8 MB)   | 30.00 ms  | -        | info   |
+| QUAL-24 | quality analysis, 24 MP JPEG photo                   | 25.77 ms  | ≤ 40 ms  | PASS   |
+| -       | quality kernels only, 1024 × 683 gray                | 2.84 ms   | -        | info   |
 | -       | folder preview resolve, images at depth 3            | 0.09 ms   | -        | info   |
 
 The 24 MP photo is the example photo `IMG_2439.JPG`, scaled to 6000 × 4000 with `sips` at quality 95. The worst case is

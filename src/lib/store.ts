@@ -8,22 +8,21 @@ import {
   Entry,
   errorMessage,
   FolderPreview,
-  isCmdError,
   joinPath,
   parentPath,
   Settings,
   SortSpec,
   sortKeyString,
 } from "./api";
+import { caps, location, path, reload } from "./navigation";
+import { locationKey } from "./locations";
 import { validateFileName } from "./rename";
-import { clearQueue } from "./thumbQueue";
 import { toast } from "./toast";
 
 export const MIN_TILE = 96;
 export const MAX_TILE = 512;
 
 export const [settings, setSettings] = createSignal<Settings | null>(null);
-export const [path, setPath] = createSignal<string | null>(null);
 export const [entries, setEntries] = createSignal<Entry[]>([]);
 export const [sort, setSortSignal] = createSignal<SortSpec>({ key: "name", desc: false });
 export const [tileSize, setTileSizeSignal] = createSignal(180);
@@ -42,11 +41,6 @@ export const [navSeq, setNavSeq] = createSignal(0);
 /** Folder previews by absolute folder path. */
 export const [previews, setPreviews] = createStore<Record<string, FolderPreview>>({});
 
-const back: string[] = [];
-const forward: string[] = [];
-export const [historyState, setHistoryState] = createSignal({ back: 0, forward: 0 });
-const syncHistory = () => setHistoryState({ back: back.length, forward: forward.length });
-
 export const folderCount = createMemo(() => {
   const e = entries();
   let n = 0;
@@ -55,174 +49,27 @@ export const folderCount = createMemo(() => {
 });
 export const images = createMemo(() => entries().slice(folderCount()));
 
-export const entryPath = (e: Entry) => joinPath(path() ?? "/", e.n);
+/** The absolute path of an entry: `Entry.p` in a collection, else the current folder and the name. */
+export const entryPath = (e: Entry) => e.p ?? joinPath(path() ?? "/", e.n);
+
+/** The selection key of an entry: unique in a listing (names can repeat in a collection). */
+export const entryKey = (e: Entry) => e.p ?? e.n;
 
 export function selectedEntries(): Entry[] {
   const sel = selection();
   if (sel.size === 0) return [];
-  return entries().filter((e) => sel.has(e.n));
+  return entries().filter((e) => sel.has(entryKey(e)));
 }
 
 export function selectedPaths(): string[] {
   return selectedEntries().map(entryPath);
 }
 
-// ---------- Navigation ----------
-
-let listSeq = 0;
-
-interface NavOptions {
-  push?: boolean;
-  select?: string;
-  openViewer?: boolean;
-}
-
-/** Removes a trailing slash, so that path comparisons work. */
-export function normPath(p: string): string {
-  return p.length > 1 ? p.replace(/\/+$/, "") || "/" : p;
-}
-
-export async function navigate(target: string, opts: NavOptions = {}) {
-  target = normPath(target);
-  const { push = true } = opts;
-  const prev = path();
-  const s = settings();
-  const prefs = s?.folderPrefs[target];
-  const nextSort = prefs?.sort ?? s?.defaultSort ?? sort();
-  const nextTile = prefs?.tileSize ?? s?.defaultTileSize ?? tileSize();
-  const seq = ++listSeq;
-  setLoading(true);
-  try {
-    const listing = await api.listDir(target, nextSort, showHidden());
-    if (seq !== listSeq) return;
-    clearQueue();
-    batch(() => {
-      if (push && prev && prev !== target) {
-        back.push(prev);
-        forward.length = 0;
-      }
-      syncHistory();
-      setPath(listing.path);
-      setSortSignal(nextSort);
-      setTileSizeSignal(nextTile);
-      setEntries(listing.entries);
-      setPreviews(reconcile({}));
-      setLoadError(null);
-      setViewerIndex(null);
-      const idx = opts.select ? listing.entries.findIndex((e) => e.n === opts.select) : -1;
-      setSelection(idx >= 0 ? new Set([listing.entries[idx].n]) : new Set<string>());
-      setAnchor(idx);
-      setCursor(idx);
-      setNavSeq(navSeq() + 1);
-      if (opts.openViewer && idx >= 0 && !listing.entries[idx].d) {
-        setViewerIndex(idx - listing.entries.filter((e) => e.d).length);
-      }
-    });
-    document.title = baseName(listing.path) || "Fast Gallery";
-  } catch (e) {
-    if (seq !== listSeq) return;
-    batch(() => {
-      if (push && prev && prev !== target) {
-        back.push(prev);
-        forward.length = 0;
-      }
-      syncHistory();
-      setPath(target);
-      setEntries([]);
-      setSelection(new Set<string>());
-      setLoadError(isCmdError(e) ? e : { kind: "other", message: errorMessage(e) });
-      setNavSeq(navSeq() + 1);
-    });
-  } finally {
-    if (seq === listSeq) setLoading(false);
-  }
-}
-
-/** Re-lists the current folder; keeps the selection and the scroll position (FSW-05). */
-export async function reload() {
-  const p = path();
-  if (!p) return;
-  const seq = ++listSeq;
-  try {
-    const listing = await api.listDir(p, sort(), showHidden());
-    if (seq !== listSeq || listing.path !== path()) return;
-    const viewing = viewerIndex();
-    const viewedName = viewing !== null ? images()[viewing]?.n : undefined;
-    batch(() => {
-      const names = new Set(listing.entries.map((e) => e.n));
-      const sel = new Set([...selection()].filter((n) => names.has(n)));
-      const cursorName = entries()[cursor()]?.n;
-      setEntries(listing.entries);
-      setSelection(sel);
-      const ci = cursorName ? listing.entries.findIndex((e) => e.n === cursorName) : -1;
-      setCursor(ci);
-      setLoadError(null);
-      if (viewing !== null) {
-        const imgs = images();
-        const vi = viewedName ? imgs.findIndex((e) => e.n === viewedName) : -1;
-        if (imgs.length === 0) setViewerIndex(null);
-        else if (vi >= 0) setViewerIndex(vi);
-        else setViewerIndex(Math.min(viewing, imgs.length - 1));
-      }
-    });
-  } catch (e) {
-    if (seq === listSeq) setLoadError(isCmdError(e) ? e : { kind: "other", message: errorMessage(e) });
-  }
-}
-
-export function goBack() {
-  const p = back.pop();
-  if (p === undefined) return;
-  const cur = path();
-  if (cur) forward.push(cur);
-  syncHistory();
-  navigate(p, { push: false });
-}
-
-export function goForward() {
-  const p = forward.pop();
-  if (p === undefined) return;
-  const cur = path();
-  if (cur) back.push(cur);
-  syncHistory();
-  navigate(p, { push: false });
-}
-
-export function goParent() {
-  const cur = path();
-  if (!cur) return;
-  const parent = parentPath(cur);
-  if (parent) navigate(parent, { select: baseName(cur) });
-}
-
-export async function openFolderDialog() {
-  const p = await api.pickFolder();
-  if (p) navigate(p);
-}
-
-/** Opens a path from drag and drop or "Open With": a folder, or the folder of an image. */
-export async function openPath(p: string) {
-  const kind = await api.pathKind(p);
-  if (kind === "dir") navigate(p);
-  else if (kind === "file") {
-    const parent = parentPath(p);
-    if (parent) navigate(parent, { select: baseName(p), openViewer: true });
-  } else toast(`“${baseName(p)}” does not exist.`, "error");
-}
-
-/** Opens the entry at a grid index: a folder in the grid, an image in the viewer. */
-export function openEntry(index: number) {
-  const e = entries()[index];
-  if (!e) return;
-  if (e.d) navigate(entryPath(e));
-  else setViewerIndex(index - folderCount());
-}
-
 // ---------- Sort, tile size, hidden files ----------
 
 function savePrefs() {
-  const p = path();
-  if (p) api.setFolderPrefs(p, { sort: sort(), tileSize: tileSize() });
+  const l = location();
+  if (l && caps().folderPrefs) api.setFolderPrefs(locationKey(l), { sort: sort(), tileSize: tileSize() });
 }
 
 let prefsTimer: number | undefined;
@@ -282,7 +129,7 @@ export function selectOnly(index: number) {
   const e = entries()[index];
   if (!e) return;
   batch(() => {
-    setSelection(new Set([e.n]));
+    setSelection(new Set([entryKey(e)]));
     setAnchor(index);
     setCursor(index);
   });
@@ -291,9 +138,10 @@ export function selectOnly(index: number) {
 export function toggleSelect(index: number) {
   const e = entries()[index];
   if (!e) return;
+  const k = entryKey(e);
   const next = new Set(selection());
-  if (next.has(e.n)) next.delete(e.n);
-  else next.add(e.n);
+  if (next.has(k)) next.delete(k);
+  else next.add(k);
   batch(() => {
     setSelection(next);
     setAnchor(index);
@@ -306,7 +154,7 @@ export function selectRange(index: number, additive = false) {
   const [lo, hi] = a < index ? [a, index] : [index, a];
   const e = entries();
   const next = additive ? new Set(selection()) : new Set<string>();
-  for (let i = lo; i <= hi; i++) next.add(e[i].n);
+  for (let i = lo; i <= hi; i++) next.add(entryKey(e[i]));
   batch(() => {
     setSelection(next);
     setCursor(index);
@@ -314,7 +162,7 @@ export function selectRange(index: number, additive = false) {
 }
 
 export function selectAll() {
-  setSelection(new Set(entries().map((e) => e.n)));
+  setSelection(new Set(entries().map(entryKey)));
 }
 
 export function clearSelection() {
@@ -329,6 +177,15 @@ export async function setEditMode(on: boolean) {
 }
 
 export const toggleEditMode = () => setEditMode(!editMode());
+
+/** The paths that ⌘Z restores: the last trashed or renamed items (for the task lock check). */
+export const [undoTargets, setUndoTargets] = createSignal<string[]>([]);
+
+/** Removes trashed paths from the listing. */
+function dropPaths(done: string[]): Entry[] {
+  const gone = new Set(done);
+  return entries().filter((e) => !gone.has(entryPath(e)));
+}
 
 /** FILE-01: moves the given images to the Trash. Requires edit mode (EDIT-05, EDIT-06). */
 export async function trashPaths(paths: string[]): Promise<string[]> {
@@ -348,6 +205,7 @@ export async function trashPaths(paths: string[]): Promise<string[]> {
         "info",
       );
     }
+    if (r.trashed.length > 0) setUndoTargets(r.trashed);
     return r.trashed;
   } catch (e) {
     toast(errorMessage(e), "error");
@@ -366,20 +224,31 @@ export async function trashSelection() {
   if (sel.length === 0) return;
   const all = entries();
   const lastIdx = Math.max(...sel.map((e) => all.indexOf(e)));
-  const trashedNames = new Set(sel.map((e) => e.n));
+  const trashed = new Set(sel);
   let next: Entry | undefined;
-  for (let i = lastIdx + 1; i < all.length && !next; i++) if (!trashedNames.has(all[i].n)) next = all[i];
-  for (let i = lastIdx - 1; i >= 0 && !next; i--) if (!trashedNames.has(all[i].n)) next = all[i];
+  for (let i = lastIdx + 1; i < all.length && !next; i++) if (!trashed.has(all[i])) next = all[i];
+  for (let i = lastIdx - 1; i >= 0 && !next; i--) if (!trashed.has(all[i])) next = all[i];
   const done = await trashPaths(sel.map(entryPath));
   if (done.length === 0) return;
-  const gone = new Set(done.map(baseName));
-  const remaining = entries().filter((e) => !gone.has(e.n));
+  const remaining = dropPaths(done);
   batch(() => {
     setEntries(remaining);
-    const ni = next ? remaining.findIndex((e) => e.n === next!.n) : -1;
+    const ni = next ? remaining.findIndex((e) => entryKey(e) === entryKey(next!)) : -1;
     if (ni >= 0) selectOnly(ni);
     else clearSelection();
   });
+}
+
+/** Trash of one tile from its trash button; the selection moves to the next tile. */
+export async function trashEntry(entry: Entry) {
+  const done = await trashPaths([entryPath(entry)]);
+  if (done.length === 0) return;
+  const all = entries();
+  const i = all.indexOf(entry);
+  const remaining = all.filter((x) => x !== entry);
+  setEntries(remaining);
+  const next = remaining[Math.min(i, remaining.length - 1)];
+  if (next) setSelection(new Set([entryKey(next)]));
 }
 
 /** Trash from the viewer; the viewer shows the next image (FILE-06). */
@@ -407,9 +276,11 @@ export async function undoTrash() {
     const restored = await api.undoTrash();
     if (restored.length) {
       toast(restored.length === 1 ? `Restored “${baseName(restored[0])}”.` : `Restored ${restored.length} items.`, "info");
+      setUndoTargets([]);
       await reload();
-      const names = new Set(restored.filter((r) => parentPath(r) === path()).map(baseName));
-      if (names.size) setSelection(names);
+      const back = new Set(restored);
+      const keys = entries().filter((e) => back.has(entryPath(e))).map(entryKey);
+      if (keys.length) setSelection(new Set(keys));
     }
   } catch (e) {
     toast(errorMessage(e), "error");
@@ -423,7 +294,8 @@ export async function copySelection(paths = selectedPaths()) {
 }
 
 export async function revealSelection(paths = selectedPaths()) {
-  const p = paths.length ? paths : path() ? [path()!] : [];
+  const cur = path();
+  const p = paths.length ? paths : cur ? [cur] : [];
   if (p.length) await api.revealInFinder(p);
 }
 
@@ -461,8 +333,7 @@ export async function trashItems(req: DeleteRequest) {
   setDeleteRequest(null);
   const done = await trashPaths([...req.folders, ...req.files]);
   if (done.length === 0) return;
-  const gone = new Set(done.map(baseName));
-  const remaining = entries().filter((e) => !gone.has(e.n));
+  const remaining = dropPaths(done);
   batch(() => {
     setEntries(remaining);
     clearSelection();
@@ -494,12 +365,11 @@ export async function renameFile(from: string, newName: string): Promise<string 
   try {
     const to = await api.renameFile(from, name);
     setRenameRequest(null);
+    setUndoTargets([from]);
     toast(`Renamed “${baseName(from)}” to “${baseName(to)}”. ⌘Z to undo.`, "info");
     await reload();
-    if (parentPath(to) === path()) {
-      const i = entries().findIndex((e) => e.n === baseName(to));
-      if (i >= 0) selectOnly(i);
-    }
+    const i = entries().findIndex((e) => entryPath(e) === to);
+    if (i >= 0) selectOnly(i);
     return null;
   } catch (e) {
     return errorMessage(e);

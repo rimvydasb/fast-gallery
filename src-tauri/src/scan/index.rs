@@ -1,5 +1,6 @@
 //! PreviewIndex: persistent `FolderPreview` storage in SQLite (system libsqlite3),
-//! plus a cache of EXIF "date taken" values for the date-taken sort.
+//! plus a cache of EXIF "date taken" values for the date-taken sort, and the generic `analysis`
+//! table of the image scan pipeline (D3).
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -36,7 +37,11 @@ impl PreviewIndex {
                 PRIMARY KEY(folder, sort)) WITHOUT ROWID;
              CREATE TABLE IF NOT EXISTS taken(
                 dir TEXT NOT NULL, name TEXT NOT NULL, mtime INTEGER NOT NULL, taken INTEGER,
-                PRIMARY KEY(dir, name)) WITHOUT ROWID;",
+                PRIMARY KEY(dir, name)) WITHOUT ROWID;
+             CREATE TABLE IF NOT EXISTS analysis(
+                dir TEXT NOT NULL, name TEXT NOT NULL, analyzer TEXT NOT NULL, version INTEGER NOT NULL,
+                mtime INTEGER NOT NULL, size INTEGER NOT NULL, data TEXT NOT NULL,
+                PRIMARY KEY(dir, name, analyzer)) WITHOUT ROWID;",
         )?;
         Ok(Self { conn: Mutex::new(conn) })
     }
@@ -85,7 +90,7 @@ impl PreviewIndex {
 
     pub fn clear(&self) {
         let conn = self.conn.lock();
-        let _ = conn.execute_batch("DELETE FROM previews; DELETE FROM taken;");
+        let _ = conn.execute_batch("DELETE FROM previews; DELETE FROM taken; DELETE FROM analysis;");
     }
 
     /// name -> (mtime ms, taken)
@@ -119,4 +124,46 @@ impl PreviewIndex {
         }
         let _ = tx.commit();
     }
+
+    /// One `analysis` row: (version, mtime, size, data).
+    pub fn analysis_get(&self, dir: &str, name: &str, analyzer: &str) -> Option<AnalysisRow> {
+        let conn = self.conn.lock();
+        let mut st = conn
+            .prepare_cached("SELECT version, mtime, size, data FROM analysis WHERE dir=?1 AND name=?2 AND analyzer=?3")
+            .ok()?;
+        st.query_row(params![dir, name, analyzer], |r| {
+            Ok(AnalysisRow { version: r.get(0)?, mtime: r.get(1)?, size: r.get(2)?, data: r.get(3)? })
+        })
+        .optional()
+        .ok()?
+    }
+
+    /// Writes `analysis` rows in one transaction: (dir, name, analyzer, row).
+    pub fn analysis_put_many(&self, rows: &[(String, String, &str, AnalysisRow)]) {
+        if rows.is_empty() {
+            return;
+        }
+        let mut conn = self.conn.lock();
+        let Ok(tx) = conn.transaction() else { return };
+        {
+            let Ok(mut st) = tx.prepare_cached(
+                "INSERT OR REPLACE INTO analysis(dir, name, analyzer, version, mtime, size, data)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            ) else {
+                return;
+            };
+            for (d, n, a, r) in rows {
+                let _ = st.execute(params![d, n, a, r.version, r.mtime, r.size, r.data]);
+            }
+        }
+        let _ = tx.commit();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct AnalysisRow {
+    pub version: u32,
+    pub mtime: i64,
+    pub size: i64,
+    pub data: String,
 }

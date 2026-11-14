@@ -1,6 +1,7 @@
 import { Show } from "solid-js";
 import { plural } from "../lib/format";
 import { folderCount, images, loading, selection, setTileSize, tileSize, MAX_TILE, MIN_TILE } from "../lib/store";
+import { task, taskText } from "../lib/tasks";
 
 /** GRID-17: number of folders, images, and the selection count. GRID-06: tile size slider. */
 export function StatusBar() {
@@ -9,6 +10,7 @@ export function StatusBar() {
       <span class="status-text" aria-live="polite">
         {plural(folderCount(), "folder", "folders")}, {plural(images().length, "image", "images")}
         <Show when={selection().size > 0}> — {selection().size.toLocaleString()} selected</Show>
+        <Show when={task()}>{(t) => <span class="status-task"> — {taskText(t())}</span>}</Show>
         <Show when={loading()}>
           <span class="spinner" aria-label="Loading" />
         </Show>

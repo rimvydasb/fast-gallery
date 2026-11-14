@@ -8,6 +8,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use fast_gallery_lib::decode;
+use fast_gallery_lib::pipeline::{decode_input_for, ImageAnalyzer};
+use fast_gallery_lib::quality::QualityAnalyzer;
 use fast_gallery_lib::scan::index::PreviewIndex;
 use fast_gallery_lib::scan::preview::{resolve, Limits};
 use fast_gallery_lib::scan::{list_dir, SortKey, SortSpec};
@@ -117,6 +119,14 @@ fn main() {
     row("-", "thumbnail 512 px, 24 MP JPEG photo", d, None);
     let d = time(9, || decode::make_thumbnail(&noise, 256).unwrap().bytes.len());
     row("-", &format!("thumbnail 256 px, 24 MP worst case: noise ({:.1} MB)", mb(&noise)), d, None);
+
+    // QUAL-24: analysis of one 24 MP JPEG (1024 px gray decode and the kernels).
+    let qa = QualityAnalyzer;
+    let d = time(15, || qa.analyze(&decode_input_for(&qa, &jpeg).unwrap()).unwrap().lap_var);
+    ok &= row("QUAL-24", "quality analysis, 24 MP JPEG photo", d, Some(40.0));
+    let input = decode_input_for(&qa, &jpeg).unwrap();
+    let d = time(15, || qa.analyze(&input).unwrap().lap_var);
+    row("-", &format!("quality kernels only, {} × {} gray", input.width, input.height), d, None);
 
     // Cached thumbnail read (disk cache, then memory cache), related to PERF-06.
     let svc = ThumbnailService::new(ThumbCache::new(root.join("cache"), u64::MAX));

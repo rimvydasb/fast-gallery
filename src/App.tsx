@@ -2,7 +2,7 @@ import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { api, FolderPreview, FsChange, parentPath, Settings } from "./lib/api";
+import { api, CollectionSummary, FolderPreview, FsChange, parentPath, Settings } from "./lib/api";
 import {
   applyPreview,
   editMode,
@@ -11,11 +11,6 @@ import {
   images,
   infoOpen,
   loadError,
-  navigate,
-  openFolderDialog,
-  openPath,
-  path,
-  reload,
   selectedEntries,
   setEditMode,
   setSettings,
@@ -23,6 +18,11 @@ import {
   sort,
   viewerIndex,
 } from "./lib/store";
+import { location, navigate, path, reload } from "./lib/navigation";
+import { setCollections } from "./lib/locations";
+import { runAction } from "./lib/actions";
+import { initTasks } from "./lib/tasks";
+import { onBadPhotoScanDone } from "./lib/badPhotos";
 import { onKeyDown } from "./lib/keyboard";
 import { sidebarCollapsed } from "./lib/ui";
 import { Toolbar } from "./components/Toolbar";
@@ -32,6 +32,7 @@ import { InfoPanel } from "./components/InfoPanel";
 import { ContextMenu } from "./components/ContextMenu";
 import { DeleteFolderDialog } from "./components/DeleteFolderDialog";
 import { RenameDialog } from "./components/RenameDialog";
+import { ScanCapDialog } from "./components/ScanCapDialog";
 import { Toasts } from "./components/Toasts";
 import { GridView } from "./views/GridView";
 import { ViewerView } from "./views/ViewerView";
@@ -44,20 +45,34 @@ export function App() {
     window.addEventListener("keydown", onKeyDown);
     // PERF-02: show the window as soon as the shell is rendered; the folder fills in after.
     const shown = getCurrentWindow().show();
-    const [s, home, pending] = await Promise.all([api.getSettings(), api.homeDir(), api.takePendingOpen()]);
+    const [s, home, pending, cols] = await Promise.all([
+      api.getSettings(),
+      api.homeDir(),
+      api.takePendingOpen(),
+      api.listCollections(),
+    ]);
     setSettings(s);
     setShowHidden(s.showHidden);
+    setCollections(cols);
 
     // NAV-11: restore the last open folder. PLAT-06: or open the file macOS asked us to open.
-    const q = new URLSearchParams(location.search).get("folder");
-    const start = pending ? openPath(pending) : navigate(q ?? s.lastFolder ?? home, { push: false });
+    const q = new URLSearchParams(window.location.search).get("folder");
+    const start = pending ? runAction("nav.openPath", pending) : navigate(q ?? s.lastFolder ?? home, { push: false });
+    const label = getCurrentWindow().label;
 
     const listeners = await Promise.all([
       setEditMode(false).then(() => () => {}), // EDIT-02
       listen<FolderPreview>("folder-preview-ready", (e) => applyPreview(e.payload)),
       listen<Settings>("settings-changed", (e) => setSettings(e.payload)),
-      listen("menu-open-folder", () => openFolderDialog()),
-      listen<string>("open-path", (e) => openPath(e.payload)),
+      listen("menu-open-folder", () => runAction("nav.openFolderDialog")),
+      listen<string>("open-path", (e) => runAction("nav.openPath", e.payload)),
+      // The busy state of all windows; the source window opens the scan result (QUAL-12).
+      initTasks((d) => onBadPhotoScanDone(d, label)).then((ls) => () => ls.forEach((u) => u())),
+      // QUAL-20: collections are shared by all windows; a shown collection is listed again.
+      listen<CollectionSummary[]>("collections-changed", (e) => {
+        setCollections(e.payload);
+        if (location()?.kind === "collection") reload();
+      }),
       // FSW-02, FSW-04: update tiles and previews after a file system change.
       listen<FsChange>("fs-changed", (e) => {
         const c = e.payload;
@@ -76,7 +91,7 @@ export function App() {
           setDropping(false);
           const p = e.payload.paths;
           // Ignore files dragged out of this window and dropped back on it.
-          if (p.length && !p.every((x) => parentPath(x) === path())) openPath(p[0]);
+          if (p.length && !p.every((x) => parentPath(x) === path())) runAction("nav.openPath", p[0]);
         }
       }),
     ]);
@@ -132,6 +147,7 @@ export function App() {
       <ContextMenu />
       <DeleteFolderDialog />
       <RenameDialog />
+      <ScanCapDialog />
       <Toasts />
     </div>
   );

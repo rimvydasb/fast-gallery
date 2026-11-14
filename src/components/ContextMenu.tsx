@@ -1,36 +1,50 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { api, errorMessage } from "../lib/api";
-import {
-  copySelection,
-  editMode,
-  entries,
-  entryPath,
-  openEntry,
-  openFolderDialog,
-  path,
-  requestRename,
-  requestTrashItems,
-  revealSelection,
-  selectedEntries,
-  settings,
-  showHidden,
-  toggleFavorite,
-  toggleHidden,
-  trashSelection,
-} from "../lib/store";
+import { editMode, entries, entryPath, selectedEntries, settings, showHidden } from "../lib/store";
+import { caps, location, path } from "../lib/navigation";
+import { ActionId, actionState, runActionById } from "../lib/actions";
+import { inTaskTree, task } from "../lib/tasks";
 import { toast } from "../lib/toast";
 import { Icon, ICONS } from "./Toolbar";
 
 export interface MenuItem {
   label: string;
   shortcut?: string;
-  action?: () => void | Promise<void>;
+  action?: () => unknown;
   /** Replaces the menu with these items (a keyboard-friendly submenu). */
   submenu?: () => Promise<MenuItem[]>;
   separator?: boolean;
   danger?: boolean;
   /** Path data for a leading icon (see ICONS). */
   icon?: string;
+  /** Shown greyed out; `title` says why. */
+  disabled?: boolean;
+  /** Tooltip, for example the reason why the item is disabled. */
+  title?: string;
+}
+
+/** A menu item that runs a registry action; disabled with the blocked reason as its tooltip (D4). */
+export function actionItem(id: ActionId, args?: unknown, extra: Partial<MenuItem> = {}): MenuItem {
+  const st = actionState(id, args);
+  return {
+    label: st.label,
+    shortcut: st.shortcut,
+    ...extra,
+    disabled: !st.enabled,
+    title: st.reason ?? undefined,
+    action: () => runActionById(id, args),
+  };
+}
+
+/**
+ * "Scan for Bad Photos" for a scan root. While a task runs: "Cancel Scan" in the tree of the task
+ * root, else the scan item, disabled (QUAL-05, QUAL-30).
+ */
+export function scanItem(root: string | null): MenuItem | null {
+  if (!root) return null;
+  const t = task();
+  if (t && inTaskTree(root, t)) return actionItem("task.cancel", undefined, { icon: ICONS.cancel });
+  return actionItem("task.scanBadPhotos", root, { icon: ICONS.scan });
 }
 
 const [menu, setMenu] = createSignal<{ x: number; y: number; items: MenuItem[] } | null>(null);
@@ -58,70 +72,79 @@ function openWithItems(p: string): () => Promise<MenuItem[]> {
   };
 }
 
-/** Items for the current selection (or the folder, if nothing is selected). */
+/** Items for the current selection (or the location, if nothing is selected). */
 export function selectionMenuItems(): MenuItem[] {
   const sel = selectedEntries();
+  const loc = location();
   const cur = path();
+  const c = caps();
   const favs = settings()?.favorites ?? [];
+  const sep: MenuItem = { separator: true, label: "" };
   if (sel.length === 0) {
     const items: MenuItem[] = [
-      { label: "Open Folder…", icon: ICONS.folder, shortcut: "⌘O", action: openFolderDialog },
-      { label: "New Window", icon: ICONS.window, shortcut: "⌘N", action: () => api.newWindow() },
+      actionItem("nav.openFolderDialog", undefined, { icon: ICONS.folder }),
+      actionItem("nav.newWindow", undefined, { icon: ICONS.window }),
     ];
     if (cur) {
-      items.push(
-        { separator: true, label: "" },
-        {
-          label: favs.includes(cur) ? "Remove Folder from Favorites" : "Add Folder to Favorites",
-          icon: ICONS.star,
-          shortcut: "⌘D",
-          action: () => toggleFavorite(cur),
-        },
-        { label: showHidden() ? "Hide Hidden Files" : "Show Hidden Files", icon: showHidden() ? ICONS.eyeOff : ICONS.eye, shortcut: "⌘⇧.", action: toggleHidden },
-        { label: "Reveal Folder in Finder", icon: ICONS.reveal, shortcut: "⌘⇧R", action: () => api.revealInFinder([cur]) },
-      );
+      items.push(sep);
+      if (c.favorites)
+        items.push(
+          actionItem("view.toggleFavorite", cur, {
+            label: favs.includes(cur) ? "Remove Folder from Favorites" : "Add Folder to Favorites",
+            icon: ICONS.star,
+          }),
+        );
+      if (c.folderTiles)
+        items.push(
+          actionItem("view.toggleHidden", undefined, {
+            label: showHidden() ? "Hide Hidden Files" : "Show Hidden Files",
+            icon: showHidden() ? ICONS.eyeOff : ICONS.eye,
+          }),
+        );
+      items.push(actionItem("view.reveal", [cur], { label: "Reveal Folder in Finder", icon: ICONS.reveal }));
+      const scan = c.scan ? scanItem(cur) : null;
+      if (scan) items.push(sep, scan);
     }
+    if (loc?.kind === "collection") items.push(sep, actionItem("data.removeCollection", loc.id, { icon: ICONS.remove }));
     return items;
   }
   const one = sel.length === 1 ? sel[0] : null;
   const onePath = one ? entryPath(one) : null;
   const items: MenuItem[] = [];
   if (one && onePath) {
-    items.push({ label: one.d ? "Open" : "Open in Viewer", icon: ICONS.open, shortcut: one.d ? "⌘↓" : "↩", action: () => openEntry(entries().indexOf(one)) });
+    items.push(
+      actionItem("nav.openEntry", entries().indexOf(one), {
+        label: one.d ? "Open" : "Open in Viewer",
+        icon: ICONS.open,
+        shortcut: one.d ? "⌘↓" : "↩",
+      }),
+    );
     if (!one.d) items.push({ label: "Open With", icon: ICONS.openWith, submenu: openWithItems(onePath) });
     if (one.d)
-      items.push({
-        label: favs.includes(onePath) ? "Remove from Favorites" : "Add to Favorites",
-        icon: ICONS.star,
-        shortcut: "⌘D",
-        action: () => toggleFavorite(onePath),
-      });
+      items.push(
+        actionItem("view.toggleFavorite", onePath, {
+          label: favs.includes(onePath) ? "Remove from Favorites" : "Add to Favorites",
+          icon: ICONS.star,
+        }),
+      );
   }
-  items.push(
-    { label: "Reveal in Finder", icon: ICONS.reveal, shortcut: "⌘⇧R", action: () => revealSelection() },
-    { label: sel.length === 1 ? "Copy" : `Copy ${sel.length} Items`, icon: ICONS.copy, shortcut: "⌘C", action: () => copySelection() },
-  );
+  items.push(actionItem("view.reveal", undefined, { icon: ICONS.reveal }), actionItem("view.copy", undefined, { icon: ICONS.copy }));
+  // QUAL-07: a scan of 1 selected folder.
+  const scan = one?.d && c.scan ? scanItem(onePath) : null;
+  if (scan) items.push(sep, scan);
   // EDIT-06: actions that change files only in edit mode.
   if (editMode()) {
     const hasFolder = sel.some((e) => e.d);
-    const label = hasFolder
-      ? one
-        ? "Move Folder to Trash…"
-        : `Move ${sel.length} Items to Trash…`
-      : sel.length === 1
-        ? "Move to Trash"
-        : `Move ${sel.length} Items to Trash`;
-    items.push({ separator: true, label: "" });
-    if (one && !one.d) items.push({ label: "Rename…", icon: ICONS.rename, action: () => requestRename(one) });
-    items.push(
-      {
-        label,
-        icon: ICONS.trash,
-        shortcut: "⌘⌫",
-        danger: true,
-        action: hasFolder ? () => requestTrashItems(sel) : trashSelection,
-      },
-    );
+    items.push(sep);
+    if (one && !one.d) items.push(actionItem("file.rename", one, { icon: ICONS.rename }));
+    const trash = hasFolder
+      ? actionItem("file.requestTrashItems", sel, { icon: ICONS.trash, danger: true })
+      : actionItem("file.trashSelection", undefined, {
+          label: sel.length === 1 ? "Move to Trash" : `Move ${sel.length} Items to Trash`,
+          icon: ICONS.trash,
+          danger: true,
+        });
+    items.push(trash);
   }
   return items;
 }
@@ -136,7 +159,7 @@ export function ContextMenu() {
   const [pos, setPos] = createSignal({ x: 0, y: 0 });
 
   const run = async (item: MenuItem) => {
-    if (item.separator) return;
+    if (item.separator || item.disabled) return;
     if (item.submenu) {
       const m = menu();
       const sub = await item.submenu();
@@ -150,7 +173,7 @@ export function ContextMenu() {
 
   const selectable = (i: number) => {
     const it = menu()?.items[i];
-    return !!it && !it.separator && (!!it.action || !!it.submenu);
+    return !!it && !it.separator && !it.disabled && (!!it.action || !!it.submenu);
   };
 
   const move = (d: number) => {
@@ -221,9 +244,10 @@ export function ContextMenu() {
               ) : (
                 <div
                   role="menuitem"
-                  aria-disabled={!item.action && !item.submenu}
+                  aria-disabled={!selectable(i())}
                   class="menu-item"
-                  classList={{ active: active() === i(), danger: !!item.danger, disabled: !item.action && !item.submenu }}
+                  title={item.title}
+                  classList={{ active: active() === i(), danger: !!item.danger, disabled: !selectable(i()) }}
                   onMouseEnter={() => selectable(i()) && setActive(i())}
                   onClick={() => run(item)}
                 >

@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 use crate::scan::SortSpec;
 
 pub const MIN_TILE: u32 = 96;
+pub const MIN_SCAN_CAP: u32 = 100;
+pub const MAX_SCAN_CAP: u32 = 1000;
+const SCAN_CAP_STEP: u32 = 100;
 pub const MAX_TILE: u32 = 512;
 const MAX_RECENTS: usize = 10;
 const MAX_FOLDER_PREFS: usize = 2000;
@@ -35,6 +38,10 @@ pub struct Settings {
     pub recents: Vec<String>,
     pub last_folder: Option<String>,
     pub folder_prefs: HashMap<String, FolderPrefs>,
+    /// Multiplies the blur threshold of the bad photo scan.
+    pub quality_sensitivity: crate::quality::Sensitivity,
+    /// Maximum number of photos in one bad photo scan.
+    pub scan_cap: u32,
 }
 
 impl Default for Settings {
@@ -52,6 +59,8 @@ impl Default for Settings {
             recents: Vec::new(),
             last_folder: None,
             folder_prefs: HashMap::new(),
+            quality_sensitivity: crate::quality::Sensitivity::Medium,
+            scan_cap: 200,
         }
     }
 }
@@ -62,6 +71,8 @@ impl Settings {
         self.preview_depth = self.preview_depth.clamp(1, 10);
         self.cache_limit_mb = self.cache_limit_mb.clamp(64, 1024 * 1024);
         self.slideshow_seconds = self.slideshow_seconds.clamp(1, 600);
+        let cap = (self.scan_cap + SCAN_CAP_STEP / 2) / SCAN_CAP_STEP * SCAN_CAP_STEP;
+        self.scan_cap = cap.clamp(MIN_SCAN_CAP, MAX_SCAN_CAP);
         for p in self.folder_prefs.values_mut() {
             p.tile_size = p.tile_size.clamp(MIN_TILE, MAX_TILE);
         }
@@ -164,5 +175,17 @@ mod tests {
         assert!(s.show_hidden);
         let again = SettingsStore::load(t.path().join("settings.json"));
         assert!(again.get().show_hidden);
+    }
+
+    #[test]
+    fn scan_cap_is_clamped_to_steps_of_100() {
+        let t = tempfile::tempdir().unwrap();
+        let st = SettingsStore::load(t.path().join("settings.json"));
+        assert_eq!(st.get().scan_cap, 200);
+        for (v, want) in [(5, 100), (149, 100), (250, 300), (999, 1000), (50_000, 1000)] {
+            assert_eq!(st.update(serde_json::json!({"scanCap": v})).unwrap().scan_cap, want, "{v}");
+        }
+        let s = st.update(serde_json::json!({"qualitySensitivity": "high"})).unwrap();
+        assert_eq!(s.quality_sensitivity, crate::quality::Sensitivity::High);
     }
 }

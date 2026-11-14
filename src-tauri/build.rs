@@ -28,6 +28,13 @@ const COMMANDS: &[&str] = &[
     "toggle_favorite",
     "set_folder_prefs",
     "home_dir",
+    "get_task_status",
+    "cancel_task",
+    "start_scan_bad_photos",
+    "list_collections",
+    "list_collection",
+    "remove_collection",
+    "get_quality",
     // Debug builds only; granted at runtime (see lib.rs, mod dev).
     "dev_log",
 ];

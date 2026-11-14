@@ -39,6 +39,13 @@
     "allow-take-pending-open",
     "allow-toggle-favorite",
     "allow-set-folder-prefs",
-    "allow-home-dir"
+    "allow-home-dir",
+    "allow-get-task-status",
+    "allow-cancel-task",
+    "allow-start-scan-bad-photos",
+    "allow-list-collections",
+    "allow-list-collection",
+    "allow-remove-collection",
+    "allow-get-quality"
   ]
 }

@@ -1,28 +1,27 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js";
-import { api, Entry } from "../lib/api";
+import { api } from "../lib/api";
 import {
   cursor,
   editMode,
   entries,
+  entryKey,
   entryPath,
   loadError,
   navSeq,
-  openEntry,
-  path,
   previews,
   requestPreviews,
   selectOnly,
   selectRange,
   selection,
   selectedEntries,
-  setSelection,
   sort,
   tileSize,
   toggleSelect,
-  trashPaths,
   clearSelection,
-  setEntries,
 } from "../lib/store";
+import { location, path } from "../lib/navigation";
+import { providerFor } from "../lib/locations";
+import { runAction } from "../lib/actions";
 import { noteFastScroll, setVisibleRange } from "../lib/thumbQueue";
 import { FolderTile, ImageTile } from "../components/Tile";
 import { openContextMenu } from "../components/ContextMenu";
@@ -136,7 +135,7 @@ export function GridView() {
     let deferSelect = false;
     if (e.metaKey) toggleSelect(index);
     else if (e.shiftKey) selectRange(index);
-    else if (!selection().has(entry.n)) selectOnly(index);
+    else if (!selection().has(entryKey(entry))) selectOnly(index);
     else deferSelect = true;
     down = { x: e.clientX, y: e.clientY, index, dragged: false, deferSelect };
   };
@@ -156,16 +155,9 @@ export function GridView() {
     down = null;
   };
 
-  const trashOne = async (entry: Entry) => {
-    const done = await trashPaths([entryPath(entry)]);
-    if (done.length) {
-      const all = entries();
-      const i = all.indexOf(entry);
-      const remaining = all.filter((x) => x !== entry);
-      setEntries(remaining);
-      const next = remaining[Math.min(i, remaining.length - 1)];
-      if (next) setSelection(new Set([next.n]));
-    }
+  const emptyText = () => {
+    const l = location();
+    return l ? providerFor(l).emptyText(l) : "";
   };
 
   return (
@@ -175,7 +167,7 @@ export function GridView() {
       tabIndex={0}
       role="listbox"
       aria-multiselectable="true"
-      aria-label={`Contents of ${path() ?? ""}`}
+      aria-label={`Contents of ${path() ?? document.title}`}
       aria-activedescendant={cursor() >= 0 ? `tile-${cursor()}` : undefined}
       onScroll={onScroll}
       onMouseMove={onMouseMove}
@@ -202,7 +194,7 @@ export function GridView() {
               const x = () => offsetX() + (idx() % cols()) * (tileSize() + GAP);
               const y = () => PAD + Math.floor(idx() / cols()) * rowH();
               const p = entryPath(entry);
-              const selected = () => selection().has(entry.n);
+              const selected = () => selection().has(entryKey(entry));
               return (
                 <div
                   id={`tile-${idx()}`}
@@ -221,7 +213,7 @@ export function GridView() {
                     height: `${tileSize() + LABEL}px`,
                   }}
                   onMouseDown={(e) => onTileMouseDown(e, idx())}
-                  onDblClick={() => openEntry(idx())}
+                  onDblClick={() => runAction("nav.openEntry", idx())}
                   onContextMenu={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -249,7 +241,7 @@ export function GridView() {
                       focused={cursor() === idx()}
                       tileSize={tileSize()}
                       editMode={editMode()}
-                      onTrash={() => trashOne(entry)}
+                      onTrash={() => runAction("file.trashEntry", entry)}
                     />
                   )}
                 </div>
@@ -257,8 +249,8 @@ export function GridView() {
             }}
           </For>
         </div>
-        <Show when={entries().length === 0 && path()}>
-          <div class="empty-state">This folder has no images or folders.</div>
+        <Show when={entries().length === 0 && location()}>
+          <div class="empty-state">{emptyText()}</div>
         </Show>
       </Show>
       <Show when={loadError()}>

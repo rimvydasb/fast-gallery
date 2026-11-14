@@ -1,9 +1,12 @@
 //! Tauri command handlers. Commands that touch the file system are `async` and run their work off
 //! the main thread (PERF-11).
 
+pub mod collections;
 pub mod edit;
 pub mod files;
+pub mod quality;
 pub mod settings;
+pub mod tasks;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,7 +22,7 @@ use crate::AppState;
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CmdError {
-    /// "permission", "notFound", "notDir", "editOff", or "other".
+    /// "permission", "notFound", "notDir", "editOff", "busy", "locked", or "other".
     pub kind: &'static str,
     pub message: String,
 }
@@ -28,7 +31,7 @@ impl CmdError {
     fn other(m: impl ToString) -> Self {
         Self { kind: "other", message: m.to_string() }
     }
-    fn io(path: &Path, e: &std::io::Error) -> Self {
+    pub(crate) fn io(path: &Path, e: &std::io::Error) -> Self {
         use std::io::ErrorKind::*;
         let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string());
         match e.kind() {
@@ -43,9 +46,19 @@ impl CmdError {
     }
 }
 
-type CmdResult<T> = Result<T, CmdError>;
+impl From<crate::tasks::TaskError> for CmdError {
+    fn from(e: crate::tasks::TaskError) -> Self {
+        let kind = match e {
+            crate::tasks::TaskError::Busy(_) => "busy",
+            crate::tasks::TaskError::Locked(_) => "locked",
+        };
+        Self { kind, message: e.message().to_string() }
+    }
+}
 
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> CmdResult<T> {
+pub(crate) type CmdResult<T> = Result<T, CmdError>;
+
+pub(crate) async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> CmdResult<T> {
     tauri::async_runtime::spawn_blocking(f).await.map_err(CmdError::other)
 }
 
@@ -213,9 +226,11 @@ pub fn get_cache_info(state: State<'_, AppState>) -> CacheInfo {
     CacheInfo { used: c.used(), limit: c.limit(), path: c.root().to_string_lossy().into_owned() }
 }
 
-/// THM-10: clears the thumbnail cache and the preview index.
+/// THM-10: clears the thumbnail cache, the preview index, and the analysis cache. Rejected with
+/// `busy` while a task runs (D6).
 #[tauri::command]
 pub async fn clear_cache(state: State<'_, AppState>) -> CmdResult<()> {
+    state.tasks.guard()?;
     let thumbs = Arc::clone(&state.thumbs);
     let index = Arc::clone(&state.previews.index);
     blocking(move || {
@@ -242,10 +257,14 @@ pub async fn trash_files(window: WebviewWindow, state: State<'_, AppState>, path
     if !state.edit.is_on(window.label()) {
         return Err(CmdError { kind: "editOff", message: edit::EDIT_OFF.into() });
     }
+    // D6: no file changes in the tree of a running task.
+    state.tasks.guard_paths(&paths)?;
     let app = window.app_handle().clone();
     let label = window.label().to_string();
     let r = blocking(move || app.state::<AppState>().edit.trash(&label, &paths)).await?;
-    r.map_err(|m| CmdError { kind: "editOff", message: m })
+    let r = r.map_err(|m| CmdError { kind: "editOff", message: m })?;
+    state.collections.remove_paths(&r.trashed);
+    Ok(r)
 }
 
 /// FILE-14: renames a file in its folder. Rejected if edit mode is off (EDIT-05). Returns the new path.
@@ -254,6 +273,7 @@ pub async fn rename_file(window: WebviewWindow, state: State<'_, AppState>, path
     if !state.edit.is_on(window.label()) {
         return Err(CmdError { kind: "editOff", message: edit::EDIT_OFF.into() });
     }
+    state.tasks.guard_paths(std::slice::from_ref(&path))?;
     let app = window.app_handle().clone();
     let label = window.label().to_string();
     blocking(move || app.state::<AppState>().edit.rename(&label, &path, &new_name))
@@ -263,10 +283,13 @@ pub async fn rename_file(window: WebviewWindow, state: State<'_, AppState>, path
 
 /// FILE-05, FILE-17: undo of the last move to Trash or rename.
 #[tauri::command]
-pub async fn undo_trash(window: WebviewWindow) -> CmdResult<Vec<String>> {
+pub async fn undo_trash(window: WebviewWindow, state: State<'_, AppState>) -> CmdResult<Vec<String>> {
+    state.tasks.guard_paths(&state.edit.undo_targets(window.label()))?;
     let app = window.app_handle().clone();
     let label = window.label().to_string();
-    blocking(move || app.state::<AppState>().edit.undo(&label)).await?.map_err(CmdError::other)
+    let restored = blocking(move || app.state::<AppState>().edit.undo(&label)).await?.map_err(CmdError::other)?;
+    state.collections.restore_paths(&restored);
+    Ok(restored)
 }
 
 fn on_main<T: Send + 'static>(app: &AppHandle, f: impl FnOnce() -> T + Send + 'static) -> CmdResult<T> {

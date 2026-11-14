@@ -6,7 +6,8 @@ const mocked = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof v
 vi.mock("../lib/api", async (orig) => ({ ...(await orig<typeof import("../lib/api")>()), api: mocked.api }));
 
 import { RenameDialog } from "./RenameDialog";
-import { renameRequest, requestRename, setEditModeSignal, setEntries, setPath, setRenameRequest } from "../lib/store";
+import { renameRequest, requestRename, setEditModeSignal, setEntries, setRenameRequest } from "../lib/store";
+import { setPath } from "../lib/navigation";
 import { setToasts } from "../lib/toast";
 
 let dispose: () => void;

@@ -95,7 +95,7 @@ impl SortSpec {
     }
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Clone, Debug, Default)]
 pub struct Entry {
     /// File name.
     pub n: String,
@@ -108,6 +108,12 @@ pub struct Entry {
     /// Date taken, s (naive local), only for sort by date taken.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub t: Option<i64>,
+    /// Absolute path, only in a collection listing (the file can be in any folder).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub p: Option<String>,
+    /// Badge codes, only in a collection listing, for example `quality.blurry`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub b: Option<Vec<String>>,
 }
 
 /// Natural order comparison: digit runs compare as numbers, letters compare case-insensitively (GRID-11).
@@ -158,7 +164,7 @@ fn trim_zeros(s: &[u8]) -> &[u8] {
     &s[k..]
 }
 
-fn mtime_ms(md: &fs::Metadata) -> i64 {
+pub fn mtime_ms(md: &fs::Metadata) -> i64 {
     md.modified()
         .ok()
         .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
@@ -178,7 +184,8 @@ pub fn sort_entries(entries: &mut [Entry], sort: SortSpec) {
                 (SortKey::Size, false) => a.s.cmp(&b.s),
             };
             let o = if sort.desc { o.reverse() } else { o };
-            o.then_with(|| natural_cmp(&a.n, &b.n))
+            // Collection entries can share a name; the path makes the order stable.
+            o.then_with(|| natural_cmp(&a.n, &b.n)).then_with(|| a.p.cmp(&b.p))
         })
     });
 }
@@ -225,9 +232,9 @@ pub fn read_entries(dir: &Path, opts: &ListOptions) -> std::io::Result<(Vec<Entr
             if is_package_name(name) {
                 continue;
             }
-            out.push(Entry { n: name.to_string(), d: true, s: 0, m: mtime_ms(&md), t: None });
+            out.push(Entry { n: name.to_string(), d: true, s: 0, m: mtime_ms(&md), ..Default::default() });
         } else if image && md.is_file() {
-            out.push(Entry { n: name.to_string(), d: false, s: md.len(), m: mtime_ms(&md), t: None });
+            out.push(Entry { n: name.to_string(), d: false, s: md.len(), m: mtime_ms(&md), ..Default::default() });
         }
     }
     Ok((out, read))
@@ -297,9 +304,9 @@ mod tests {
     #[test]
     fn folders_first() {
         let mut v = vec![
-            Entry { n: "b.jpg".into(), d: false, s: 1, m: 0, t: None },
-            Entry { n: "z".into(), d: true, s: 0, m: 0, t: None },
-            Entry { n: "a.jpg".into(), d: false, s: 2, m: 0, t: None },
+            Entry { n: "b.jpg".into(), d: false, s: 1, ..Default::default() },
+            Entry { n: "z".into(), d: true, ..Default::default() },
+            Entry { n: "a.jpg".into(), d: false, s: 2, ..Default::default() },
         ];
         sort_entries(&mut v, SortSpec { key: SortKey::Name, desc: false });
         let names: Vec<_> = v.iter().map(|e| e.n.as_str()).collect();

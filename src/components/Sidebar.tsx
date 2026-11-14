@@ -1,6 +1,8 @@
 import { createResource, For, Show } from "solid-js";
 import { api, baseName } from "../lib/api";
-import { navigate, path, settings, toggleFavorite } from "../lib/store";
+import { settings } from "../lib/store";
+import { path } from "../lib/navigation";
+import { runAction } from "../lib/actions";
 
 function Item(props: { label: string; target: string; icon: string; onRemove?: () => void; removeLabel?: string }) {
   return (
@@ -9,7 +11,7 @@ function Item(props: { label: string; target: string; icon: string; onRemove?: (
         class="side-item"
         classList={{ current: path() === props.target }}
         title={props.target}
-        onClick={() => navigate(props.target)}
+        onClick={() => runAction("nav.open", props.target)}
       >
         <span class="side-icon" aria-hidden="true">
           {props.icon}
@@ -38,7 +40,7 @@ export function Sidebar() {
         <header class="side-header">
           <h2>Favorites</h2>
           <Show when={cur() && !favs().includes(cur()!)}>
-            <button class="side-add" title="Add the current folder to Favorites (⌘D)" onClick={() => toggleFavorite(cur()!)}>
+            <button class="side-add" title="Add the current folder to Favorites (⌘D)" onClick={() => runAction("view.toggleFavorite", cur())}>
               +
             </button>
           </Show>
@@ -50,7 +52,7 @@ export function Sidebar() {
                 label={baseName(f)}
                 target={f}
                 icon="★"
-                onRemove={() => toggleFavorite(f)}
+                onRemove={() => runAction("view.toggleFavorite", f)}
                 removeLabel={`Remove ${baseName(f)} from Favorites`}
               />
             )}

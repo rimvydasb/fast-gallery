@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { api, baseName, FolderPreview } from "../lib/api";
-import { deleteRequest, setDeleteRequest, sort, trashItems } from "../lib/store";
+import { deleteRequest, setDeleteRequest, sort } from "../lib/store";
+import { runAction } from "../lib/actions";
 import { imageCount, plural } from "../lib/format";
 import { QueuedThumb } from "./Tile";
 import { Icon } from "./Toolbar";
@@ -34,7 +35,9 @@ export function DeleteFolderDialog() {
   const close = () => setDeleteRequest(null);
   const confirm = () => {
     const r = deleteRequest();
-    if (r) trashItems(r);
+    if (!r) return;
+    setDeleteRequest(null);
+    runAction("file.trashItems", r);
   };
 
   const onKey = (e: KeyboardEvent) => {

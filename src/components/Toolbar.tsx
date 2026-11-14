@@ -1,19 +1,12 @@
 import { SortKey } from "../lib/api";
-import {
-  editMode,
-  goBack,
-  goForward,
-  goParent,
-  historyState,
-  infoOpen,
-  path,
-  setInfoOpen,
-  setSort,
-  sort,
-  toggleEditMode,
-} from "../lib/store";
+import { editMode, infoOpen, sort } from "../lib/store";
+import { location } from "../lib/navigation";
+import { collections } from "../lib/locations";
+import { ActionId, actionLabel, blockedReason, isEnabled, runAction } from "../lib/actions";
+import { task } from "../lib/tasks";
 import { Breadcrumbs } from "./Breadcrumbs";
-import { toggleSidebar } from "../lib/ui";
+import { MenuItem, showMenu } from "./ContextMenu";
+import { TaskIndicator } from "./TaskIndicator";
 
 const SORTS: { key: SortKey; label: string }[] = [
   { key: "name", label: "Name" },
@@ -56,30 +49,61 @@ export const ICONS = {
   open: "M5 15L15 5M7.500 5H15v7.500",
   openWith: "M3 4h14v12H3zM7 10h6M10 7l3 3-3 3",
   desc: "M6 5v10M3 12l3 3 3-3M12 6h3M12 10h4M12 14h5",
+  collections: "M3 6h14v10H3zM5 4h10M7 2h6",
+  scan: "M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7M13 3h2.5A1.5 1.5 0 0 1 17 4.5V7M17 13v2.5a1.5 1.5 0 0 1-1.5 1.5H13M7 17H4.5A1.5 1.5 0 0 1 3 15.5V13M4 10h12",
+  cancel: "M5 5l10 10M15 5L5 15",
+  remove: "M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10",
 };
+
+/** Tooltip of a toolbar button: the label and shortcut, or why the action is blocked. */
+function tip(id: ActionId, fallback: string): string {
+  return (blockedReason as (id: ActionId) => string | null)(id) ?? fallback;
+}
+
+/** QUAL-21: the menu of the Collections button. */
+export function collectionsMenuItems(): MenuItem[] {
+  const items: MenuItem[] = collections().map((c) => ({
+    label: actionLabel("nav.openCollection", c.id),
+    icon: ICONS.scan,
+    action: () => runAction("nav.openCollection", c.id),
+  }));
+  if (items.length === 0) items.push({ label: "No Collections", disabled: true });
+  if (task()) {
+    items.push(
+      { separator: true, label: "" },
+      { label: actionLabel("task.cancel"), icon: ICONS.cancel, action: () => runAction("task.cancel") },
+    );
+  }
+  return items;
+}
+
+function openCollectionsMenu(e: MouseEvent) {
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+  showMenu(r.left, r.bottom + 4, collectionsMenuItems());
+}
 
 /** Toolbar in the transparent title bar (PLAT-05). */
 export function Toolbar() {
   return (
     <header class="toolbar" data-tauri-drag-region>
       <div class="traffic-space" data-tauri-drag-region />
-      <button class="tb-btn" title="Toggle Sidebar (⌘⌥S)" aria-label="Toggle sidebar" onClick={toggleSidebar}>
+      <button class="tb-btn" title="Toggle Sidebar (⌘⌥S)" aria-label="Toggle sidebar" onClick={() => runAction("view.toggleSidebar")}>
         <Icon d={ICONS.sidebar} />
       </button>
-      <button class="tb-btn" title="Back (⌘[)" aria-label="Back" disabled={historyState().back === 0} onClick={goBack}>
+      <button class="tb-btn" title={tip("nav.back", "Back (⌘[)")} aria-label="Back" disabled={!isEnabled("nav.back")} onClick={() => runAction("nav.back")}>
         <Icon d={ICONS.back} />
       </button>
-      <button class="tb-btn" title="Forward (⌘])" aria-label="Forward" disabled={historyState().forward === 0} onClick={goForward}>
+      <button class="tb-btn" title={tip("nav.forward", "Forward (⌘])")} aria-label="Forward" disabled={!isEnabled("nav.forward")} onClick={() => runAction("nav.forward")}>
         <Icon d={ICONS.forward} />
       </button>
-      <button class="tb-btn" title="Enclosing Folder (⌘↑)" aria-label="Enclosing folder" disabled={!path() || path() === "/"} onClick={goParent}>
+      <button class="tb-btn" title={tip("nav.parent", "Enclosing Folder (⌘↑)")} aria-label="Enclosing folder" disabled={!isEnabled("nav.parent")} onClick={() => runAction("nav.parent")}>
         <Icon d={ICONS.up} />
       </button>
       <Breadcrumbs />
       <div class="tb-spacer" data-tauri-drag-region />
       <label class="sort-control" title="Sort order">
         <span class="visually-hidden">Sort by</span>
-        <select value={sort().key} onChange={(e) => setSort({ ...sort(), key: e.currentTarget.value as SortKey })}>
+        <select value={sort().key} onChange={(e) => runAction("view.sort", { ...sort(), key: e.currentTarget.value as SortKey })}>
           {SORTS.map((s) => (
             <option value={s.key}>{s.label}</option>
           ))}
@@ -89,9 +113,20 @@ export function Toolbar() {
         class="tb-btn"
         title={sort().desc ? "Descending" : "Ascending"}
         aria-label={sort().desc ? "Sort descending" : "Sort ascending"}
-        onClick={() => setSort({ ...sort(), desc: !sort().desc })}
+        onClick={() => runAction("view.sort", { ...sort(), desc: !sort().desc })}
       >
         <Icon d={sort().desc ? ICONS.desc : ICONS.asc} />
+      </button>
+      <TaskIndicator variant="toolbar" />
+      <button
+        class="tb-btn"
+        classList={{ on: location()?.kind === "collection" }}
+        title="Collections"
+        aria-label="Collections"
+        aria-haspopup="menu"
+        onClick={openCollectionsMenu}
+      >
+        <Icon d={ICONS.collections} />
       </button>
       <button
         class="tb-btn edit-toggle"
@@ -99,11 +134,11 @@ export function Toolbar() {
         title={editMode() ? "Turn Off Edit Mode (⌘E)" : "Turn On Edit Mode (⌘E)"}
         aria-pressed={editMode()}
         aria-label="Edit mode"
-        onClick={toggleEditMode}
+        onClick={() => runAction("view.toggleEditMode")}
       >
         <Icon d={ICONS.edit} />
       </button>
-      <button class="tb-btn" classList={{ on: infoOpen() }} title="Info (⌘I)" aria-pressed={infoOpen()} aria-label="Info" onClick={() => setInfoOpen(!infoOpen())}>
+      <button class="tb-btn" classList={{ on: infoOpen() }} title="Info (⌘I)" aria-pressed={infoOpen()} aria-label="Info" onClick={() => runAction("view.toggleInfo")}>
         <Icon d={ICONS.info} />
       </button>
     </header>

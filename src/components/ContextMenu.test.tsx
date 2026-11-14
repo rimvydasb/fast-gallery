@@ -5,7 +5,8 @@ const mocked = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof v
 vi.mock("../lib/api", async (orig) => ({ ...(await orig<typeof import("../lib/api")>()), api: mocked.api }));
 
 import { selectionMenuItems } from "./ContextMenu";
-import { renameRequest, setEditModeSignal, setEntries, setPath, setRenameRequest, setSelection } from "../lib/store";
+import { renameRequest, setEditModeSignal, setEntries, setRenameRequest, setSelection } from "../lib/store";
+import { setPath } from "../lib/navigation";
 
 const labels = () => selectionMenuItems().map((i) => i.label);
 const rename = () => selectionMenuItems().find((i) => i.label === "Rename…");
