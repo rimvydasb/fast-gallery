@@ -77,8 +77,8 @@ photo similarity and quality.
 
 - [ ] Folder on hover fix: now when folder is on hover, hover looks strange and ugly - improve GUI in that place.
 
-- [ ] **Moder view**
-    - [ ] It should be possible to select "Standard" and "Modern" looks in Settings.
+- [ ] **Modern view**
+    - [ ] It should be possible to select "Classic" and "Modern" looks in Settings.
     - [ ] Modern view stops drawing standard folder like images that wrap 4 photos, but instead of it, it draws a modern
       looking box that has thin bezels and photos tries taking as much space as possible.
     - [ ] Modern view in general drastically reduces padding and margin of photos views.

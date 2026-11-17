@@ -94,7 +94,11 @@ export interface Settings {
   folderPrefs: Record<string, FolderPrefs>;
   qualitySensitivity: QualitySensitivity;
   scanCap: number;
+  look: Look;
 }
+
+/** The look of the photo and folder grid. */
+export type Look = "classic" | "modern";
 
 export type QualitySensitivity = "low" | "medium" | "high";
 

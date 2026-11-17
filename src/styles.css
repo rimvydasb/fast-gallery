@@ -451,11 +451,40 @@ input {
 .tile.folder .tile-media {
   background: transparent;
   overflow: visible;
+  transition: background-color 0.12s;
+}
+
+/* Hover: a soft rounded plate behind the tile; the folder shape lifts a little. */
+.tile:hover:not(.selected) .tile-media {
+  background: var(--hover);
+}
+
+.tile:not(.folder):hover:not(.selected) .tile-media {
+  background: color-mix(in srgb, var(--tile-bg), var(--fg) 6%);
+}
+
+.folder-body,
+.folder-tab {
+  transition: filter 0.12s;
+}
+
+.tile.folder:hover .folder-body,
+.tile.folder:hover .folder-tab {
+  filter: brightness(1.05) saturate(1.05);
 }
 
 .tile.selected .tile-media {
   background: var(--accent-soft);
   box-shadow: 0 0 0 2px var(--sel-ring);
+}
+
+/* A selected folder: the plate only; a ring around the empty space of the folder shape looks loose. */
+.grid-scroll:not(.modern) .tile.folder.selected .tile-media {
+  box-shadow: none;
+}
+
+.grid-scroll:not(.modern) .tile.folder.cursor .tile-media {
+  box-shadow: inset 0 0 0 2px var(--sel-ring);
 }
 
 .tile.cursor .tile-media {
@@ -622,6 +651,145 @@ input {
   height: 100%;
   border: 0;
   font-size: 14px;
+}
+
+/* ---------- Modern look: tight spacing, thin-bezel folder boxes ---------- */
+.grid-scroll.modern .tile-media {
+  border-radius: 6px;
+}
+
+.grid-scroll.modern .tile-media > img {
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 0;
+}
+
+.grid-scroll.modern .tile-label {
+  height: 22px;
+  padding: 4px 4px 0;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.grid-scroll.modern .tile.folder .tile-media {
+  overflow: hidden;
+}
+
+.grid-scroll.modern .tile.selected .tile-media,
+.grid-scroll.modern .tile.cursor .tile-media {
+  box-shadow: 0 0 0 2px var(--sel-ring);
+}
+
+.grid-scroll.modern:not(:focus) .tile.cursor:not(.selected) .tile-media {
+  box-shadow: none;
+}
+
+.mfolder {
+  position: absolute;
+  inset: 0;
+  padding: 2px;
+  display: grid;
+  gap: 2px;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg-elev);
+}
+
+.mfolder[data-count="0"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--tile-bg);
+}
+
+.mfolder[data-count="1"] {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.mfolder[data-count="2"] {
+  grid-template-rows: 1fr;
+}
+
+.mfolder[data-count="3"] .mfolder-cell:first-child {
+  grid-row: span 2;
+}
+
+.mfolder-cell {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--tile-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mfolder-cell img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+
+.mfolder-cell .thumb-error {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  font-size: 14px;
+}
+
+.mfolder-empty {
+  width: 34%;
+  height: 34%;
+  color: var(--folder-back);
+}
+
+.mfolder-count {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 7px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.mfolder[data-count="0"] .mfolder-count {
+  color: var(--fg-dim);
+  background: transparent;
+}
+
+.grid-scroll.modern .tile.folder:hover:not(.selected) .mfolder {
+  border-color: color-mix(in srgb, var(--line), var(--fg) 18%);
+}
+
+.grid-scroll.modern .tile.folder:hover .mfolder-cell img.loaded {
+  filter: brightness(1.06);
+}
+
+.grid-scroll.modern .tile.folder .tile-label.mfolder-label {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+}
+
+.mfolder-icon {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--folder-back);
 }
 
 .empty-state,

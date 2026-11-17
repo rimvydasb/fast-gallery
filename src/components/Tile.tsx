@@ -4,6 +4,7 @@ import { badgeInfo, badgeLabels } from "../lib/badges";
 import { TaskIndicator } from "./TaskIndicator";
 import { requestThumb } from "../lib/thumbQueue";
 import { imageCount } from "../lib/format";
+import { look } from "../lib/ui";
 
 /** THM-02: 512 px thumbnails for tiles larger than 256 px or on Retina displays. */
 export function thumbSizeFor(tile: number): 256 | 512 {
@@ -95,8 +96,63 @@ export function ImageTile(props: TileProps) {
   );
 }
 
-/** FPV-01, FPV-11, FPV-12, FPV-13: up to 4 previews in a 2×2 layout on a folder shape. */
+/** The folder tile of the current look. */
 export function FolderTile(props: TileProps) {
+  return (
+    <Show when={look() === "modern"} fallback={<ClassicFolderTile {...props} />}>
+      <ModernFolderTile {...props} />
+    </Show>
+  );
+}
+
+function FolderGlyph(props: { class?: string }) {
+  return (
+    <svg class={props.class} viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M1.5 3.5A1 1 0 0 1 2.5 2.5h3.6l1.4 1.5h6a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/**
+ * Modern look: a box with a thin bezel. The previews fill the box as a mosaic (1 to 4 cells), and
+ * the image count is a pill on the box.
+ */
+function ModernFolderTile(props: TileProps) {
+  const images = () => props.preview?.images ?? [];
+  return (
+    <>
+      <div class="tile-media">
+        <div class="mfolder" data-count={images().length}>
+          <Show when={images().length > 0} fallback={<FolderGlyph class="mfolder-empty" />}>
+            <For each={images()}>
+              {(img) => (
+                <div class="mfolder-cell">
+                  <QueuedThumb path={img.p} mtime={img.m} size={thumbSizeFor(props.tileSize)} priority={props.index} fit="cover" />
+                </div>
+              )}
+            </For>
+          </Show>
+          <Show when={props.preview && props.preview.count > 0 ? props.preview : null}>
+            {(p) => (
+              <span class="mfolder-count" title={imageCount(p().count, p().more)}>
+                {p().count.toLocaleString()}
+                {p().more ? "+" : ""}
+              </span>
+            )}
+          </Show>
+        </div>
+        <TaskIndicator variant="tile" root={props.path} />
+      </div>
+      <div class="tile-label mfolder-label" title={props.entry.n}>
+        <FolderGlyph class="mfolder-icon" />
+        <span class="tile-name">{props.entry.n}</span>
+      </div>
+    </>
+  );
+}
+
+/** FPV-01, FPV-11, FPV-12, FPV-13: up to 4 previews in a 2×2 layout on a folder shape. */
+function ClassicFolderTile(props: TileProps) {
   const size = () => (props.tileSize > 256 && window.devicePixelRatio > 1 ? 512 : 256) as 256 | 512;
   return (
     <>
