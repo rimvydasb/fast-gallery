@@ -71,3 +71,28 @@ pub fn io() -> &'static ThreadPool {
     static P: OnceLock<ThreadPool> = OnceLock::new();
     P.get_or_init(|| build("io", 4))
 }
+
+/// Quality of service classes for own threads.
+pub enum Qos {
+    /// Long work the user does not wait for: macOS also throttles its disk access.
+    Background,
+    /// Work the user does not wait for, but that must keep up (thumbnail cache writer, eviction).
+    Utility,
+}
+
+/// Sets the QoS class of the calling thread (macOS; no effect on other systems).
+pub fn set_thread_qos(qos: Qos) {
+    #[cfg(target_os = "macos")]
+    {
+        let class = match qos {
+            Qos::Background => libc::qos_class_t::QOS_CLASS_BACKGROUND,
+            Qos::Utility => libc::qos_class_t::QOS_CLASS_UTILITY,
+        };
+        // SAFETY: changes only the calling thread.
+        unsafe {
+            libc::pthread_set_qos_class_self_np(class, 0);
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = qos;
+}

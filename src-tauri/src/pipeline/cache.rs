@@ -13,7 +13,7 @@ pub const BATCH: usize = 32;
 
 pub struct AnalysisCache {
     index: Arc<PreviewIndex>,
-    pending: Vec<(String, String, &'static str, AnalysisRow)>,
+    pending: Vec<(String, String, u64, &'static str, AnalysisRow)>,
 }
 
 fn split(path: &Path) -> Option<(String, String)> {
@@ -48,7 +48,8 @@ impl AnalysisCache {
     /// Queues a row of `A::ID`; writes a batch of `BATCH` rows.
     pub fn put_row<A: ImageAnalyzer>(&mut self, path: &Path, mtime: i64, size: u64, out: &A::Output) {
         let (Some((dir, name)), Ok(data)) = (split(path), serde_json::to_string(out)) else { return };
-        self.pending.push((dir, name, A::ID, AnalysisRow { version: A::VERSION, mtime, size: size as i64, data }));
+        let hash = crate::thumbs::path_hash(path);
+        self.pending.push((dir, name, hash, A::ID, AnalysisRow { version: A::VERSION, mtime, size: size as i64, data }));
         if self.pending.len() >= BATCH {
             self.flush();
         }

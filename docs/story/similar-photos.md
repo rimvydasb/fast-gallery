@@ -62,10 +62,13 @@ Ideas that can be used or not (take them as proposal, not strict requirement):
    virtual folder. Now I'm forwarded to `Collections > Bad photos` - this is bad. Virtual folder must contain the whole
    path so user can easily to step back.
 
-- [ ] **Photos cache improvement**
-
-We already have cache for image thumbnails. We should also cache vectors, tags and/or indexes to quickly re-determine
-photo similarity and quality.
+- [x] **Photos cache improvement**
+    - [x] We already have cache for image thumbnails. We should also cache vectors, tags and/or indexes to quickly
+      re-determine photo similarity and quality.
+    - [x] Allow 10% surplus of the cache. When cache is over then as per limit, then show number of used in red.
+    - [x] When thumbnails cache is full, and 10% surplus is used, then oldest 10% thumbnails are immediately deleted
+      with their index data. This should keep performance stable, because new thumbnails will not throttle cache while
+      old ones are deleted.
 
 - [x] **Toolbar.tsx improvements**
     - [x] At the end of path there's a folder that transforms all the visual path to input text field with a written

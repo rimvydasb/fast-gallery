@@ -246,6 +246,9 @@ pub fn run() {
                 PreviewIndex::open(&cache_dir.join("index.sqlite")).or_else(|_| PreviewIndex::in_memory())?,
             );
             let cache = ThumbCache::new(cache_dir.join("thumbs"), s.cache_limit_mb * 1024 * 1024);
+            // Evicted thumbnails take the analysis data of their source file with them.
+            let evict_index = Arc::clone(&index);
+            cache.set_on_evict(Box::new(move |hashes| evict_index.analysis_delete_hashes(&hashes)));
             cache.start_accounting();
             app.manage(AppState {
                 previews: Arc::new(FolderPreviewService::new(index)),

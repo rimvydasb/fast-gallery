@@ -10,6 +10,11 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use super::preview::FolderPreview;
 
+/// The `analysis` layout: 3 = key `(dir, name, analyzer)` plus a `hash` column (`thumbs::path_hash` of
+/// the source file) without an index. Reads and writes cost the same as without the column; only the
+/// thumbnail cache eviction uses `hash`, with 1 scan of the table (see `analysis_delete_hashes`).
+const SCHEMA_VERSION: i64 = 3;
+
 pub struct PreviewIndex {
     conn: Mutex<Connection>,
 }
@@ -29,6 +34,11 @@ impl PreviewIndex {
     }
 
     fn init(conn: Connection) -> rusqlite::Result<Self> {
+        // An `analysis` table of an older layout: it is only a cache, so start it again.
+        let version: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        if version < SCHEMA_VERSION {
+            conn.execute_batch(&format!("DROP TABLE IF EXISTS analysis; PRAGMA user_version = {SCHEMA_VERSION};"))?;
+        }
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
              PRAGMA synchronous=NORMAL;
@@ -41,6 +51,7 @@ impl PreviewIndex {
              CREATE TABLE IF NOT EXISTS analysis(
                 dir TEXT NOT NULL, name TEXT NOT NULL, analyzer TEXT NOT NULL, version INTEGER NOT NULL,
                 mtime INTEGER NOT NULL, size INTEGER NOT NULL, data TEXT NOT NULL,
+                hash INTEGER NOT NULL,
                 PRIMARY KEY(dir, name, analyzer)) WITHOUT ROWID;",
         )?;
         Ok(Self { conn: Mutex::new(conn) })
@@ -138,8 +149,8 @@ impl PreviewIndex {
         .ok()?
     }
 
-    /// Writes `analysis` rows in one transaction: (dir, name, analyzer, row).
-    pub fn analysis_put_many(&self, rows: &[(String, String, &str, AnalysisRow)]) {
+    /// Writes `analysis` rows in one transaction: (dir, name, path hash, analyzer, row).
+    pub fn analysis_put_many(&self, rows: &[(String, String, u64, &str, AnalysisRow)]) {
         if rows.is_empty() {
             return;
         }
@@ -147,14 +158,39 @@ impl PreviewIndex {
         let Ok(tx) = conn.transaction() else { return };
         {
             let Ok(mut st) = tx.prepare_cached(
-                "INSERT OR REPLACE INTO analysis(dir, name, analyzer, version, mtime, size, data)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT OR REPLACE INTO analysis(dir, name, analyzer, version, mtime, size, data, hash)
+                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             ) else {
                 return;
             };
-            for (d, n, a, r) in rows {
-                let _ = st.execute(params![d, n, a, r.version, r.mtime, r.size, r.data]);
+            for (d, n, h, a, r) in rows {
+                let _ = st.execute(params![d, n, a, r.version, r.mtime, r.size, r.data, *h as i64]);
             }
+        }
+        let _ = tx.commit();
+    }
+}
+
+impl PreviewIndex {
+    /// Removes the `analysis` rows of the source files with these `thumbs::path_hash` values
+    /// (thumbnail cache eviction). The hashes go to a temporary table, then 1 scan of `analysis`
+    /// removes the rows: `hash` has no index, so that writes do not pay for one.
+    pub fn analysis_delete_hashes(&self, hashes: &[u64]) {
+        if hashes.is_empty() {
+            return;
+        }
+        let mut conn = self.conn.lock();
+        let Ok(tx) = conn.transaction() else { return };
+        let ok = tx
+            .execute_batch("CREATE TEMP TABLE IF NOT EXISTS evicted(h INTEGER PRIMARY KEY); DELETE FROM evicted;")
+            .is_ok();
+        if ok {
+            if let Ok(mut st) = tx.prepare_cached("INSERT OR IGNORE INTO evicted(h) VALUES(?1)") {
+                for h in hashes {
+                    let _ = st.execute(params![*h as i64]);
+                }
+            }
+            let _ = tx.execute_batch("DELETE FROM analysis WHERE hash IN (SELECT h FROM evicted); DELETE FROM evicted;");
         }
         let _ = tx.commit();
     }
@@ -166,4 +202,46 @@ pub struct AnalysisRow {
     pub mtime: i64,
     pub size: i64,
     pub data: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn analysis_delete_hashes_removes_all_analyzers_of_the_file() {
+        let ix = PreviewIndex::in_memory().unwrap();
+        let row = AnalysisRow { version: 1, mtime: 1, size: 1, data: "{}".into() };
+        let h1 = crate::thumbs::path_hash(Path::new("/a/1.jpg"));
+        let h2 = crate::thumbs::path_hash(Path::new("/a/2.jpg"));
+        ix.analysis_put_many(&[
+            ("/a".into(), "1.jpg".into(), h1, "quality", row.clone()),
+            ("/a".into(), "1.jpg".into(), h1, "similarity", row.clone()),
+            ("/a".into(), "2.jpg".into(), h2, "quality", row.clone()),
+        ]);
+        ix.analysis_delete_hashes(&[h1]);
+        assert!(ix.analysis_get("/a", "1.jpg", "quality").is_none());
+        assert!(ix.analysis_get("/a", "1.jpg", "similarity").is_none());
+        assert_eq!(ix.analysis_get("/a", "2.jpg", "quality"), Some(row));
+    }
+
+    #[test]
+    fn old_analysis_table_is_replaced() {
+        let t = tempfile::tempdir().unwrap();
+        let p = t.path().join("index.sqlite");
+        Connection::open(&p)
+            .unwrap()
+            .execute_batch(
+                "CREATE TABLE analysis(dir TEXT NOT NULL, name TEXT NOT NULL, analyzer TEXT NOT NULL,
+                 version INTEGER NOT NULL, mtime INTEGER NOT NULL, size INTEGER NOT NULL, data TEXT NOT NULL,
+                 PRIMARY KEY(dir, name, analyzer)) WITHOUT ROWID;
+                 INSERT INTO analysis VALUES('/a', '1.jpg', 'quality', 1, 1, 1, '{}');",
+            )
+            .unwrap();
+        let ix = PreviewIndex::open(&p).unwrap();
+        assert!(ix.analysis_get("/a", "1.jpg", "quality").is_none());
+        let row = AnalysisRow { version: 1, mtime: 1, size: 1, data: "{}".into() };
+        ix.analysis_put_many(&[("/a".into(), "1.jpg".into(), 7, "quality", row.clone())]);
+        assert_eq!(ix.analysis_get("/a", "1.jpg", "quality"), Some(row));
+    }
 }

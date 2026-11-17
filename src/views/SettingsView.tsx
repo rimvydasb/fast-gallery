@@ -122,7 +122,13 @@ export function SettingsView() {
               <div class="field">
                 <span class="label">In use</span>
                 <div class="inline">
-                  <span>{cache() ? formatBytes(cache()!.used) : "…"}</span>
+                  {/* The cache may use a 10 % surplus over the limit before eviction; red while in it. */}
+                  <span
+                    classList={{ "over-limit": !!cache() && cache()!.used > cache()!.limit }}
+                    title={cache() && cache()!.used > cache()!.limit ? "Over the limit: the oldest 10 % is removed when the 10 % surplus is full" : undefined}
+                  >
+                    {cache() ? formatBytes(cache()!.used) : "…"}
+                  </span>
                   <button
                     type="button"
                     class="btn"

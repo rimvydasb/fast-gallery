@@ -2,7 +2,7 @@
 
 mod cache;
 
-pub use cache::ThumbCache;
+pub use cache::{path_hash, ThumbCache};
 
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
@@ -85,8 +85,9 @@ impl ThumbnailService {
     /// Decode, downscale, encode, and store. Runs on the decode pool.
     pub fn generate(&self, key: ThumbKey) -> Option<Arc<Encoded>> {
         let e = Arc::new(decode::make_thumbnail(&key.path, key.size)?);
-        self.cache.write(&key, &e.bytes);
-        self.mem.lock().put(key, Arc::clone(&e));
+        // Memory first: it serves the entry until the queued disk write lands.
+        self.mem.lock().put(key.clone(), Arc::clone(&e));
+        self.cache.store(key, Arc::clone(&e));
         Some(e)
     }
 

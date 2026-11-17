@@ -8,9 +8,10 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use fast_gallery_lib::decode;
-use fast_gallery_lib::pipeline::{decode_input_for, ImageAnalyzer, Pair};
+use fast_gallery_lib::pipeline::{decode_input_for, AnalysisCache, ImageAnalyzer, Pair};
 use fast_gallery_lib::quality::QualityAnalyzer;
 use fast_gallery_lib::screenshot::ScreenshotAnalyzer;
+use fast_gallery_lib::similarity::SimilarityAnalyzer;
 use fast_gallery_lib::scan::index::PreviewIndex;
 use fast_gallery_lib::scan::preview::{resolve, Limits};
 use fast_gallery_lib::scan::{list_dir, SortKey, SortSpec};
@@ -145,6 +146,142 @@ fn main() {
         fresh.get_blocking(&jpeg, 256).unwrap().bytes.len()
     });
     row("-", "cached thumbnail lookup (disk)", d, None);
+
+    // ThumbCache writes and eviction (THM-09), with real thumbnail bytes.
+    let thumb = std::sync::Arc::new(decode::make_thumbnail(&jpeg, 256).unwrap());
+    let key = |i: usize, size: u32| fast_gallery_lib::thumbs::ThumbKey {
+        path: root.join(format!("src/IMG_{i:05}.jpg")),
+        file_size: 1,
+        mtime_ns: 1,
+        size,
+    };
+    const N: usize = 2000;
+    // `store` queues the write (after) or writes at once (before); `flush` waits for the disk.
+    let mut blocked = Vec::new();
+    let mut writes_new = Vec::new();
+    let mut writes_existing = Vec::new();
+    for run in 0..5 {
+        let c = ThumbCache::new(root.join(format!("wcache{run}")), u64::MAX);
+        let t = Instant::now();
+        for i in 0..N {
+            c.store(key(i, 256), std::sync::Arc::clone(&thumb));
+        }
+        blocked.push(t.elapsed());
+        c.flush();
+        writes_new.push(t.elapsed());
+        let t = Instant::now();
+        for i in 0..N {
+            c.store(key(i, 512), std::sync::Arc::clone(&thumb));
+        }
+        c.flush();
+        writes_existing.push(t.elapsed());
+        c.clear();
+    }
+    row("-", &format!("cache store, time the decode thread waits, {N}"), median(blocked), None);
+    row("-", &format!("cache store until on disk, new photos, {N}"), median(writes_new), None);
+    row("-", &format!("cache store until on disk, folder exists, {N}"), median(writes_existing), None);
+
+    const E: usize = 5000;
+    let mut evicts = Vec::new();
+    for run in 0..5 {
+        let c = ThumbCache::new(root.join(format!("ecache{run}")), u64::MAX);
+        for i in 0..E {
+            c.store(key(i, 256), std::sync::Arc::clone(&thumb));
+        }
+        c.flush();
+        // Limit = use: both the old rule (90 % of the limit) and the new rule (90 % of the use)
+        // remove the same 10 %.
+        c.set_limit(c.used());
+        let t = Instant::now();
+        c.evict();
+        evicts.push(t.elapsed());
+        c.clear();
+    }
+    row("-", &format!("cache eviction of 10 %, {E} entries"), median(evicts), None);
+
+    // Disk cache reads (the folder open from cache, PERF-06), alone and while an eviction runs on
+    // its own thread (before: normal QoS; after: background QoS).
+    const R: usize = 20_000;
+    let c = ThumbCache::new(root.join("rcache"), u64::MAX);
+    for i in 0..R {
+        c.store(key(i, 256), std::sync::Arc::clone(&thumb));
+    }
+    c.flush();
+    let newest: Vec<_> = (R - N..R).map(|i| key(i, 256)).collect();
+    let read_all = || newest.iter().filter(|k| c.read(k).is_some()).count();
+    assert_eq!(read_all(), N);
+    row("-", &format!("cache read from disk, {N} entries"), time(20, read_all), None);
+    let mut during = Vec::new();
+    let mut evict_wall = Vec::new();
+    for run in 0..3 {
+        // A new cache of R entries, then the use is made 130 % of the limit: the eviction thread starts.
+        let c = ThumbCache::new(root.join(format!("rcache{run}")), u64::MAX);
+        for i in 0..R {
+            c.store(key(i, 256), std::sync::Arc::clone(&thumb));
+        }
+        c.flush();
+        let read_all = || newest.iter().filter(|k| c.read(k).is_some()).count();
+        let used = c.used();
+        let t = Instant::now();
+        c.set_limit(used / 13 * 10);
+        while c.used() > c.limit() {
+            let t = Instant::now();
+            std::hint::black_box(read_all());
+            during.push(t.elapsed());
+        }
+        evict_wall.push(t.elapsed());
+    }
+    row("-", &format!("cache read from disk, {N} entries, during eviction"), median(during), None);
+    row("-", &format!("eviction thread wall time, {R} entries (not same amount)"), median(evict_wall), None);
+    // Analysis cache writes to an on-disk index (QUAL-17): the cost of the `analysis` table indexes.
+    let qout = qa.analyze(&input).unwrap();
+    let mut awrites = Vec::new();
+    for run in 0..5 {
+        let ix = std::sync::Arc::new(PreviewIndex::open(&root.join(format!("ix{run}.sqlite"))).unwrap());
+        let t = Instant::now();
+        {
+            let mut c = AnalysisCache::new(ix);
+            for i in 0..N {
+                c.put::<QualityAnalyzer>(&root.join(format!("src/IMG_{i:05}.jpg")), 1, 1, &qout);
+            }
+        } // drop flushes the last batch
+        awrites.push(t.elapsed());
+    }
+    row("-", &format!("analysis cache write, {N} rows"), median(awrites), None);
+    // Reads (a rescan of an analysed folder), in an order other than the write order.
+    let c = AnalysisCache::new(std::sync::Arc::new(PreviewIndex::open(&root.join("ix0.sqlite")).unwrap()));
+    let hits = (0..N).filter(|i| c.get::<QualityAnalyzer>(&root.join(format!("src/IMG_{i:05}.jpg")), 1, 1).is_some()).count();
+    assert_eq!(hits, N, "the read benchmark must hit the cache");
+    let d = time(5, || {
+        (0..N).rev().filter(|i| c.get::<QualityAnalyzer>(&root.join(format!("src/IMG_{i:05}.jpg")), 1, 1).is_some()).count()
+    });
+    row("-", &format!("analysis cache read, {N} rows"), d, None);
+
+    // Eviction removes the analysis rows of evicted photos: 1 scan of `analysis` (`hash` has no
+    // index, so that writes stay as fast as without the column). 20,000 photos with quality and
+    // similarity rows; 10 % evicted.
+    const P: usize = 20_000;
+    let sa = SimilarityAnalyzer;
+    let sout = sa.analyze(&decode_input_for(&sa, &jpeg).unwrap()).unwrap();
+    let src = |i: usize| root.join(format!("big-src/IMG_{i:05}.jpg"));
+    let mut deletes = Vec::new();
+    for run in 0..5 {
+        let ix = std::sync::Arc::new(PreviewIndex::open(&root.join(format!("ixd{run}.sqlite"))).unwrap());
+        {
+            let mut c = AnalysisCache::new(std::sync::Arc::clone(&ix));
+            for i in 0..P {
+                c.put::<QualityAnalyzer>(&src(i), 1, 1, &qout);
+                c.put::<SimilarityAnalyzer>(&src(i), 1, 1, &sout);
+            }
+        }
+        let hashes: Vec<u64> = (0..P / 10).map(|i| fast_gallery_lib::thumbs::path_hash(&src(i))).collect();
+        let t = Instant::now();
+        ix.analysis_delete_hashes(&hashes);
+        deletes.push(t.elapsed());
+        let c = AnalysisCache::new(ix);
+        assert!(c.get::<QualityAnalyzer>(&src(0), 1, 1).is_none() && c.get::<QualityAnalyzer>(&src(P - 1), 1, 1).is_some());
+    }
+    row("-", &format!("eviction: analysis delete, {} of {P} photos", P / 10), median(deletes), None);
 
     // Folder preview resolution: 20 nested folders, images at depth 3.
     let tree = root.join("tree");

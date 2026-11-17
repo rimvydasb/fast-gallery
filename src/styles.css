@@ -1603,3 +1603,9 @@ input {
 .task-indicator.ti-tile {
   z-index: 2;
 }
+
+/* Settings: thumbnail cache use in the 10 % surplus over the limit. */
+.settings .over-limit {
+  color: var(--danger);
+  font-weight: 600;
+}
