@@ -111,7 +111,9 @@ pub async fn list_dir(
     })
     .await??;
     state.watcher.watch(window.app_handle(), window.label(), &p, Arc::clone(&state.thumbs), Arc::clone(&state.previews.index));
-    state.settings.visit(&path);
+    if let Some(s) = state.settings.visit(&path) {
+        let _ = window.app_handle().emit("settings-changed", &s);
+    }
     crate::trace("list_dir done");
     Ok(DirListing::new(path, listing))
 }

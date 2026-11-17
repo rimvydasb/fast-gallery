@@ -166,6 +166,8 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &MenuItem::with_id(app, "new_window", "New Window", true, Some("CmdOrCtrl+N"))?,
             &MenuItem::with_id(app, "open_folder", "Open Folder…", true, Some("CmdOrCtrl+O"))?,
             &PredefinedMenuItem::separator(app)?,
+            &MenuItem::with_id(app, "clear_recents", "Clear Recent", true, None::<&str>)?,
+            &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::close_window(app, None)?,
         ],
     )?;
@@ -200,6 +202,10 @@ fn on_menu(app: &AppHandle, id: &str) {
         }
         "new_window" => {
             let _ = open_main_window(app, None);
+        }
+        "clear_recents" => {
+            let s = app.state::<AppState>().settings.mutate(|s| s.recents.clear());
+            let _ = app.emit("settings-changed", &s);
         }
         "open_folder" => match focused_browser(app) {
             Some(w) => {

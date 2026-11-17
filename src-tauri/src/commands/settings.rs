@@ -134,10 +134,11 @@ impl SettingsStore {
     }
 
     /// Records an opened folder as the last folder (NAV-11) and in Recent folders (NAV-08).
-    pub fn visit(&self, folder: &str) {
+    /// Returns the new settings when they changed, so the caller can tell the windows.
+    pub fn visit(&self, folder: &str) -> Option<Settings> {
         let mut d = self.data.lock();
         if d.last_folder.as_deref() == Some(folder) && d.recents.first().map(String::as_str) == Some(folder) {
-            return;
+            return None;
         }
         d.last_folder = Some(folder.to_string());
         d.recents.retain(|r| r != folder);
@@ -147,7 +148,9 @@ impl SettingsStore {
         drop(d);
         // Write off the command thread; a lost write only loses a recent entry.
         let path = self.path.clone();
+        let out = s.clone();
         crate::pools::io().spawn(move || write_json(&path, &s));
+        Some(out)
     }
 }
 
