@@ -37,9 +37,15 @@ Ideas that can be used or not (take them as proposal, not strict requirement):
 
 ### Collapsing
 
-- [ ] User is able to collapse photos to virtual collapsed folders **by similarity**. The folder has a single photo as a
-  headline and other photos behind it indicating that it is a burst kind of catalog. No traditional folder wrapper is
-  needed.
+- [ ] Collapsing works on selected grouping mode
+- [ ] Collapsing is just another grouped photos view. Add a switch from horizontally separated groups to collapsed
+  groups in Toolbar. User will be able to switch between views of how user wants to see grouped photos.
+- [ ] Collapse photos appear as a virtual collapsed folders. The folder has a single photo as a headline and other
+  photos behind it indicating that it is a *burst* kind of catalog. No traditional folder wrapper is needed. User must
+  be able to open that collapsed folder as a virtual folder to see the content.
+- [ ] When collapsed, then grouping horizontal lines will disappear.
+- [ ] User should be still able to sort phots view that shows collapsed and not collapsed photos. Take collapsed folder
+  as a whole when measuring size and other attributes for sorting.
 
 ### Sorting
 
