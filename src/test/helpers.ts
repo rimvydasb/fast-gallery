@@ -28,6 +28,7 @@ export const apiMock = () => ({
   removeCollection: vi.fn(),
   getTaskStatus: vi.fn(),
   homeDir: vi.fn(),
+  pathKind: vi.fn(),
   setFolderPrefs: vi.fn(),
   startAnalyzePhotos: vi.fn(),
 });

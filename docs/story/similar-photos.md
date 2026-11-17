@@ -54,7 +54,7 @@ Ideas that can be used or not (take them as proposal, not strict requirement):
 
 ## Other Fixes
 
-- [ ] **Virtual folder fix**
+- [x] **Virtual folder fix**
 
 1. I open `home > rimvydas > Photos > MobileBackup > iPhone`
 2. I press scan on `2014`
@@ -67,11 +67,11 @@ Ideas that can be used or not (take them as proposal, not strict requirement):
 We already have cache for image thumbnails. We should also cache vectors, tags and/or indexes to quickly re-determine
 photo similarity and quality.
 
-- [ ] **Toolbar.tsx improvements**
-    - [ ] At the end of path there's a folder that transforms all the visual path to input text field with a written
+- [x] **Toolbar.tsx improvements**
+    - [x] At the end of path there's a folder that transforms all the visual path to input text field with a written
       path. This allows user to copy the current path and paste existing. Thin about the icon of that button: maybe it
       can be switched with edit mode button icon.
-    - [ ] When path is in edit mode, I can paste any other path and I can navigate immediately to that path. Appropriate
+    - [x] When path is in edit mode, I can paste any other path and I can navigate immediately to that path. Appropriate
       errors should be shown and path should be reverted if bad. In general, this is more like a Microsoft Windows
       behavior.
 

@@ -16,7 +16,8 @@ import {
   deleteRequest,
   renameRequest,
 } from "./store";
-import { caps, path } from "./navigation";
+import { caps, location, path } from "./navigation";
+import { setPathEditing } from "./pathEdit";
 import { runAction } from "./actions";
 import { scanCapInfo } from "./badPhotos";
 import { gridMove, scrollToIndex } from "../views/GridView";
@@ -75,6 +76,9 @@ function gridKey(e: KeyboardEvent): boolean {
       }
       case "a":
         runAction("view.selectAll");
+        return true;
+      case "l":
+        if (location()) setPathEditing(true);
         return true;
       case "Backspace": {
         // A selection with folders asks for a confirmation (DeleteFolderDialog).

@@ -187,16 +187,18 @@ export function goForward() {
 }
 
 /** True if Enclosing Folder is possible. */
+const parentTarget = () => {
+  const l = location();
+  return l ? providerFor(l).parent(l) : null;
+};
+
 export function canGoParent(): boolean {
-  const p = path();
-  return caps().parent && !!p && p !== "/";
+  return !!parentTarget();
 }
 
 export function goParent() {
-  const cur = path();
-  if (!cur || !caps().parent) return;
-  const parent = parentPath(cur);
-  if (parent) navigate(parent, { select: baseName(cur) });
+  const t = parentTarget();
+  if (t) navigate(t.to, { select: t.select });
 }
 
 export async function openFolderDialog() {

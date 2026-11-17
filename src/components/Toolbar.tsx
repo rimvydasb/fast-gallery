@@ -86,6 +86,8 @@ export const ICONS = {
   scan: "M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7M13 3h2.5A1.5 1.5 0 0 1 17 4.5V7M17 13v2.5a1.5 1.5 0 0 1-1.5 1.5H13M7 17H4.5A1.5 1.5 0 0 1 3 15.5V13M4 10h12",
   cancel: "M5 5l10 10M15 5L5 15",
   remove: "M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10",
+  /** A text field with a cursor: the breadcrumb bar becomes a path field. */
+  pathEdit: "M2.5 6h15v8h-15zM6.5 8v4M5.5 8h2M5.5 12h2M10 10h5",
 };
 
 /** Tooltip of a toolbar button: the label and shortcut, or why the action is blocked. */

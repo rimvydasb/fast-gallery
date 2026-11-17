@@ -1,7 +1,7 @@
 // Locations (D5): what a window shows. A disk folder or an in-memory collection, each behind a
 // `LocationProvider`. Navigation, the grid, and the action registry use only these interfaces.
 import { createSignal } from "solid-js";
-import { api, baseName, CollectionSummary, DirListing, GroupKey, SortSpec } from "./api";
+import { api, baseName, CollectionSummary, DirListing, GroupKey, parentPath, SortSpec } from "./api";
 import { collectionEmptyText } from "./badges";
 
 export type DiskLocation = { kind: "disk"; path: string };
@@ -9,8 +9,6 @@ export type CollectionLocation = { kind: "collection"; id: string };
 export type Location = DiskLocation | CollectionLocation;
 
 export interface LocationCaps {
-  /** Enclosing Folder (⌘↑) is possible. */
-  parent: boolean;
   /** The location can be a favorite. */
   favorites: boolean;
   /** The location goes to Recents and lastFolder. */
@@ -44,10 +42,11 @@ export interface LocationProvider<L extends Location> {
   caps(loc: L): LocationCaps;
   /** Text of the grid when the listing is empty. */
   emptyText(loc: L): string;
+  /** Target of Enclosing Folder (⌘↑) and the entry key to select there, or null. */
+  parent(loc: L): { to: Location; select?: string } | null;
 }
 
 export const NO_CAPS: LocationCaps = {
-  parent: false,
   favorites: false,
   recents: false,
   folderPrefs: false,
@@ -57,7 +56,6 @@ export const NO_CAPS: LocationCaps = {
 };
 
 const DISK_CAPS: LocationCaps = {
-  parent: true,
   favorites: true,
   recents: true,
   folderPrefs: true,
@@ -71,6 +69,11 @@ export const [collections, setCollections] = createSignal<CollectionSummary[]>([
 
 export function collectionName(id: string): string {
   return collections().find((c) => c.id === id)?.name ?? "Collection";
+}
+
+/** The folder the collection came from, or null. */
+export function collectionRoot(id: string): string | null {
+  return collections().find((c) => c.id === id)?.root ?? null;
 }
 
 export const DiskProvider: LocationProvider<DiskLocation> = {
@@ -90,17 +93,29 @@ export const DiskProvider: LocationProvider<DiskLocation> = {
   },
   caps: () => DISK_CAPS,
   emptyText: () => "This folder has no images or folders.",
+  parent(loc) {
+    if (loc.path === "/") return null;
+    const p = parentPath(loc.path);
+    return p ? { to: { kind: "disk", path: p }, select: baseName(loc.path) } : null;
+  },
 };
 
 export const CollectionProvider: LocationProvider<CollectionLocation> = {
   list: (loc, sort, _showHidden, group) => api.listCollection(loc.id, sort, group),
   title: (loc) => collectionName(loc.id),
-  crumbs: (loc) => [
-    { label: "Collections", title: "Collections", target: null },
-    { label: collectionName(loc.id), title: collectionName(loc.id), target: loc },
-  ],
+  // A collection from a scan shows the path of its root, then "[name]", so the user can step back.
+  crumbs(loc) {
+    const name = collectionName(loc.id);
+    const root = collectionRoot(loc.id);
+    if (!root) return [{ label: "Collections", title: "Collections", target: null }, { label: name, title: name, target: loc }];
+    return [...DiskProvider.crumbs({ kind: "disk", path: root }), { label: `[${name}]`, title: `${name} in ${root}`, target: loc }];
+  },
   caps: () => NO_CAPS,
   emptyText: (loc) => collectionEmptyText(loc.id),
+  parent(loc) {
+    const root = collectionRoot(loc.id);
+    return root ? { to: { kind: "disk", path: root } } : null;
+  },
 };
 
 export function providerFor(loc: Location): LocationProvider<Location> {

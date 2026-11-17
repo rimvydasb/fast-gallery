@@ -146,7 +146,7 @@ describe("context menu scan items (QUAL-05, QUAL-07, QUAL-30)", () => {
 describe("Collections menu (QUAL-21)", () => {
   it("lists the collections and Cancel Scan while a task runs", () => {
     expect(collectionsMenuItems().map((i) => i.label)).toEqual(["No Collections"]);
-    setCollections([{ id: "bad-photos", name: "Bad photos", icon: "quality", count: 23 }]);
+    setCollections([{ id: "bad-photos", name: "Bad photos", icon: "quality", count: 23, root: null }]);
     setTask(scanTask("/Photos/2026"));
     expect(collectionsMenuItems().map((i) => i.label)).toEqual(["Bad photos (23)", "", "Cancel Scan"]);
   });

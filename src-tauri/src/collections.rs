@@ -59,6 +59,8 @@ pub struct CollectionSummary {
     pub name: String,
     pub icon: String,
     pub count: usize,
+    /// The folder the collection came from (`origin.root`), so the virtual folder can show its path.
+    pub root: Option<String>,
 }
 
 /// Receives the summary list after each change (`collections-changed` to all windows).
@@ -77,7 +79,13 @@ impl CollectionStore {
 
     fn summaries(v: &[Collection]) -> Vec<CollectionSummary> {
         v.iter()
-            .map(|c| CollectionSummary { id: c.id.clone(), name: c.name.clone(), icon: c.icon.clone(), count: c.items.len() })
+            .map(|c| CollectionSummary {
+                id: c.id.clone(),
+                name: c.name.clone(),
+                icon: c.icon.clone(),
+                count: c.items.len(),
+                root: c.origin.as_ref().map(|o| o.root.clone()),
+            })
             .collect()
     }
 

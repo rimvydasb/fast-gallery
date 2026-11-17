@@ -6,8 +6,8 @@ const mocked = vi.hoisted(() => ({ api: {} as Record<string, ReturnType<typeof v
 vi.mock("./api", async (orig) => ({ ...(await orig<typeof import("./api")>()), api: mocked.api }));
 
 import { entries, entryPath, selectedPaths, selection, setEditModeSignal, setViewerIndex, toggleSelect, trashSelection } from "./store";
-import { historyState, location, navigate, resetHistory, setPath } from "./navigation";
-import { locationKey, parseLocation, DiskProvider, setCollections } from "./locations";
+import { canGoParent, goParent, historyState, location, navigate, resetHistory, setPath } from "./navigation";
+import { locationKey, parseLocation, CollectionProvider, DiskProvider, setCollections } from "./locations";
 import { onBadPhotoScanDone, scanCapInfo, setScanCapInfo, startBadPhotoScan } from "./badPhotos";
 import { setTask } from "./tasks";
 import { setToasts, toasts } from "./toast";
@@ -22,7 +22,7 @@ beforeEach(() => {
   setScanCapInfo(null);
   setViewerIndex(null);
   resetHistory();
-  setCollections([{ id: "bad-photos", name: "Bad photos", icon: "quality", count: 2 }]);
+  setCollections([{ id: "bad-photos", name: "Bad photos", icon: "quality", count: 2, root: null }]);
   setPath("/Photos");
   setEditModeSignal(true);
 });
@@ -34,6 +34,25 @@ describe("locations", () => {
 
   it("shows /Volumes/X as one crumb", () => {
     expect(DiskProvider.crumbs({ kind: "disk", path: "/Volumes/Disk/x" }).map((c) => c.label)).toEqual(["Disk", "x"]);
+  });
+
+  it("shows a collection without a root under Collections", () => {
+    expect(CollectionProvider.crumbs(BAD).map((c) => c.label)).toEqual(["Collections", "Bad photos"]);
+  });
+
+  it("shows a scan collection after the path of its root, and ⌘↑ goes to the root", async () => {
+    setCollections([{ id: "bad-photos", name: "Bad photos", icon: "quality", count: 2, root: "/Users/me/iPhone/2014" }]);
+    const crumbs = CollectionProvider.crumbs(BAD);
+    expect(crumbs.map((c) => c.label)).toEqual(["Computer", "Users", "me", "iPhone", "2014", "[Bad photos]"]);
+    expect(crumbs[4].target).toEqual({ kind: "disk", path: "/Users/me/iPhone/2014" });
+    expect(crumbs[5].target).toEqual(BAD);
+
+    mocked.api.listCollection.mockResolvedValue({ path: "collection:bad-photos", entries: [] });
+    await navigate(BAD);
+    expect(canGoParent()).toBe(true);
+    goParent();
+    await flush();
+    expect(location()).toEqual({ kind: "disk", path: "/Users/me/iPhone/2014" });
   });
 });
 

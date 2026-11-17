@@ -252,6 +252,53 @@ input {
   flex: none;
 }
 
+/* The button at the end of the breadcrumbs: the bar becomes a path field. */
+.crumb-edit {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--fg-faint);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crumb-edit:hover {
+  background: var(--hover);
+  color: var(--fg);
+}
+
+.crumb-edit .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* The breadcrumb bar as a text field (⌘L). */
+.path-field {
+  flex: 1 1 auto;
+  min-width: 120px;
+  height: 26px;
+  margin-left: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  font-size: 13px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.path-field:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
 /* ---------- Body ---------- */
 .body {
   flex: 1;

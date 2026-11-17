@@ -132,6 +132,8 @@ export interface CollectionSummary {
   name: string;
   icon: string;
   count: number;
+  /** The folder the collection came from, or null. */
+  root: string | null;
 }
 
 export interface QualityMetrics {
