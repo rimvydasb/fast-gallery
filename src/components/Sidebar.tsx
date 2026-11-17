@@ -65,7 +65,15 @@ export function Sidebar() {
         </header>
         <ul>
           <For each={recents()} fallback={<li class="side-empty">No recent folders</li>}>
-            {(r) => <Item label={baseName(r)} target={r} icon="◷" />}
+            {(r) => (
+              <Item
+                label={baseName(r)}
+                target={r}
+                icon="◷"
+                onRemove={() => runAction("view.removeRecent", r)}
+                removeLabel={`Remove ${baseName(r)} from Recent`}
+              />
+            )}
           </For>
         </ul>
       </section>

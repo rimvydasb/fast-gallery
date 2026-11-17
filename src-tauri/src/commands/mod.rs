@@ -118,30 +118,30 @@ pub async fn list_dir(
 
 /// NAV-08, NAV-11: an opened folder becomes the last folder. It goes to Recent folders only when
 /// its tree has photos: a folder without photos in it or in its subfolders is not worth a return.
-/// When the folder has subfolders but no direct photos, the subfolders are counted in the
-/// background, with the limits of a folder preview.
+/// When the folder has subfolders but no direct photos, the subfolders are counted with the limits
+/// of a folder preview. All of it runs on the background pool, so the listing never waits for it.
 fn record_visit(app: &AppHandle, state: &AppState, path: &str, dir: &Path, listing: &arrange::Listing) {
     let has_images = listing.entries.iter().any(|e| !e.d);
     let has_dirs = listing.entries.iter().any(|e| e.d);
-    let notify = |app: &AppHandle, s: Option<settings::Settings>| {
-        if let Some(s) = s {
-            let _ = app.emit("settings-changed", &s);
-        }
-    };
-    notify(app, state.settings.visit(path, has_images));
-    if has_images || !has_dirs {
-        return;
-    }
     let app = app.clone();
     let path = path.to_string();
     let dir = dir.to_path_buf();
     let limits = limits(state);
-    crate::pools::scan().spawn_fifo(move || {
+    crate::pools::background().spawn(move || {
         let state = app.state::<AppState>();
+        let notify = |s: Option<settings::Settings>| {
+            if let Some(s) = s {
+                let _ = app.emit("settings-changed", &s);
+            }
+        };
+        notify(state.settings.visit(&path, has_images));
+        if has_images || !has_dirs {
+            return;
+        }
         let p = preview::resolve(&dir, SortSpec::default(), limits, &state.previews.index);
         // An incomplete count of 0 is not proof that the tree has no photos.
         if p.count > 0 || p.more {
-            notify(&app, state.settings.add_recent(&path));
+            notify(state.settings.add_recent(&path));
         }
     });
 }

@@ -343,6 +343,13 @@ export async function toggleFavorite(p: string) {
   toast(s.favorites.includes(p) ? `Added “${baseName(p)}” to Favorites.` : `Removed “${baseName(p)}” from Favorites.`, "info");
 }
 
+/** Removes one folder from Recent folders; the other entries keep their order. */
+export async function removeRecent(p: string) {
+  const s = settings();
+  if (!s) return;
+  setSettings(await api.updateSettings({ recents: s.recents.filter((r) => r !== p) }));
+}
+
 // ---------- Delete folders / mixed selections (edit mode) ----------
 
 export interface DeleteRequest {

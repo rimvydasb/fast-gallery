@@ -133,40 +133,41 @@ impl SettingsStore {
         s
     }
 
+    /// Call these 2 off the command thread: they write the settings file.
+    ///
     /// Records an opened folder as the last folder (NAV-11) and, when `recent` is true, in Recent
-    /// folders (NAV-08). Returns the new settings when they changed, so the caller can tell the
-    /// windows.
+    /// folders (NAV-08). Returns the new settings when Recent folders changed, so the caller can
+    /// tell the windows; the last folder is read only at start-up and needs no event.
     pub fn visit(&self, folder: &str, recent: bool) -> Option<Settings> {
         self.record(Some(folder), recent.then_some(folder))
     }
 
-    /// Puts a folder at the top of Recent folders (NAV-08) without a change to the last folder.
+    /// Adds a folder to Recent folders (NAV-08) without a change to the last folder.
     pub fn add_recent(&self, folder: &str) -> Option<Settings> {
         self.record(None, Some(folder))
     }
 
+    /// A folder that is already in Recent folders keeps its place: a reorder on each visit makes
+    /// the sidebar list jump, for example when the user opens a folder from that list.
     fn record(&self, last: Option<&str>, recent: Option<&str>) -> Option<Settings> {
         let mut d = self.data.lock();
-        let last_same = last.is_none_or(|f| d.last_folder.as_deref() == Some(f));
-        let recent_same = recent.is_none_or(|f| d.recents.first().map(String::as_str) == Some(f));
-        if last_same && recent_same {
+        let new_last = last.filter(|f| d.last_folder.as_deref() != Some(*f));
+        let new_recent = recent.filter(|f| !d.recents.iter().any(|r| r == f));
+        if new_last.is_none() && new_recent.is_none() {
             return None;
         }
-        if let Some(f) = last {
+        if let Some(f) = new_last {
             d.last_folder = Some(f.to_string());
         }
-        if let Some(f) = recent {
-            d.recents.retain(|r| r != f);
+        if let Some(f) = new_recent {
             d.recents.insert(0, f.to_string());
             d.recents.truncate(MAX_RECENTS);
         }
         let s = d.clone();
         drop(d);
-        // Write off the command thread; a lost write only loses a recent entry.
-        let path = self.path.clone();
-        let out = s.clone();
-        crate::pools::io().spawn(move || write_json(&path, &s));
-        Some(out)
+        // The callers run on the background pool, so the write is done here.
+        self.save(&s);
+        new_recent.map(|_| s)
     }
 }
 
@@ -215,13 +216,23 @@ mod tests {
         let t = tempfile::tempdir().unwrap();
         let st = SettingsStore::load(t.path().join("settings.json"));
         assert!(st.visit("/photos", true).is_some());
-        let s = st.visit("/empty", false).unwrap();
-        assert_eq!(s.last_folder.as_deref(), Some("/empty"));
-        assert_eq!(s.recents, vec!["/photos".to_string()]);
-        assert!(st.visit("/empty", false).is_none());
-        assert_eq!(st.visit("/empty", true).unwrap().recents, vec!["/empty".to_string(), "/photos".to_string()]);
+        assert!(st.visit("/empty", false).is_none(), "no Recent change, no event");
+        assert_eq!(st.get().last_folder.as_deref(), Some("/empty"));
+        assert_eq!(st.get().recents, vec!["/photos".to_string()]);
         let s = st.add_recent("/later").unwrap();
         assert_eq!(s.last_folder.as_deref(), Some("/empty"));
-        assert_eq!(s.recents[0], "/later");
+        assert_eq!(s.recents, vec!["/later".to_string(), "/photos".to_string()]);
+    }
+
+    #[test]
+    fn known_recent_keeps_its_place() {
+        let t = tempfile::tempdir().unwrap();
+        let st = SettingsStore::load(t.path().join("settings.json"));
+        st.visit("/a", true);
+        st.visit("/b", true);
+        assert!(st.visit("/a", true).is_none());
+        let s = st.get();
+        assert_eq!(s.recents, vec!["/b".to_string(), "/a".to_string()]);
+        assert_eq!(s.last_folder.as_deref(), Some("/a"));
     }
 }

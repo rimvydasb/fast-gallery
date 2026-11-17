@@ -37,6 +37,7 @@ import {
   tileSize,
   toggleEditMode,
   toggleFavorite,
+  removeRecent,
   toggleHidden,
   trashEntry,
   trashItems,
@@ -94,6 +95,7 @@ export interface ActionArgs {
   "view.copy": string[] | undefined;
   "view.reveal": string[] | undefined;
   "view.toggleFavorite": string | null;
+  "view.removeRecent": string;
   "view.sort": SortSpec;
   "view.group": GroupKey;
   "view.tileSize": number;
@@ -258,6 +260,12 @@ const DEFS: { [K in ActionId]: Omit<Action<ActionArgs[K]>, "id"> } = {
     category: "view",
     enabled: (p: string | null) => !!p,
     run: (p: string | null) => toggleFavorite(p!),
+  },
+  "view.removeRecent": {
+    label: () => "Remove from Recent",
+    category: "view",
+    enabled: always,
+    run: (p: string) => removeRecent(p),
   },
   "view.sort": {
     label: () => "Sort",

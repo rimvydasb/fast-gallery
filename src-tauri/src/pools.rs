@@ -72,6 +72,20 @@ pub fn io() -> &'static ThreadPool {
     P.get_or_init(|| build("io", 4))
 }
 
+/// Bookkeeping the user never waits for (Recent folders): 1 thread at background QoS, so it
+/// does not take CPU or disk time from listing, previews, and thumbnails.
+pub fn background() -> &'static ThreadPool {
+    static P: OnceLock<ThreadPool> = OnceLock::new();
+    P.get_or_init(|| {
+        ThreadPoolBuilder::new()
+            .num_threads(1)
+            .thread_name(|_| "background".into())
+            .start_handler(|_| set_thread_qos(Qos::Background))
+            .build()
+            .expect("thread pool")
+    })
+}
+
 /// Quality of service classes for own threads.
 pub enum Qos {
     /// Long work the user does not wait for: macOS also throttles its disk access.
