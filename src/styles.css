@@ -13,6 +13,8 @@
   --accent: #0a64d8;
   --accent-soft: rgba(10, 100, 216, 0.16);
   --sel-ring: #0a64d8;
+  --sel-plate: rgba(10, 100, 216, 0.18);
+  --sel-plate-hover: rgba(10, 100, 216, 0.24);
   --folder-back: #8fbcef;
   --folder-front: #a9cdf5;
   --folder-shade: rgba(20, 60, 120, 0.12);
@@ -38,6 +40,8 @@
     --accent: #3d8bfd;
     --accent-soft: rgba(61, 139, 253, 0.22);
     --sel-ring: #3d8bfd;
+    --sel-plate: rgba(61, 139, 253, 0.26);
+    --sel-plate-hover: rgba(61, 139, 253, 0.32);
     --folder-back: #3f6fa8;
     --folder-front: #5385c2;
     --folder-shade: rgba(0, 0, 0, 0.25);
@@ -473,26 +477,18 @@ input {
   filter: brightness(1.05) saturate(1.05);
 }
 
+/* Selection: the hover plate in a soft blue, with no ring or border. */
 .tile.selected .tile-media {
-  background: var(--accent-soft);
-  box-shadow: 0 0 0 2px var(--sel-ring);
+  background: var(--sel-plate);
 }
 
-/* A selected folder: the plate only; a ring around the empty space of the folder shape looks loose. */
-.grid-scroll:not(.modern) .tile.folder.selected .tile-media {
-  box-shadow: none;
+.tile.selected:hover .tile-media {
+  background: var(--sel-plate-hover);
 }
 
-.grid-scroll:not(.modern) .tile.folder.cursor .tile-media {
-  box-shadow: inset 0 0 0 2px var(--sel-ring);
-}
-
-.tile.cursor .tile-media {
-  box-shadow: 0 0 0 2px var(--sel-ring);
-}
-
-.grid-scroll:not(:focus) .tile.cursor:not(.selected) .tile-media {
-  box-shadow: none;
+/* The keyboard cursor on a tile that is not selected: the hover plate. */
+.grid-scroll:focus .tile.cursor:not(.selected) .tile-media {
+  background: var(--hover);
 }
 
 .tile-media > img {
@@ -675,13 +671,29 @@ input {
   overflow: hidden;
 }
 
-.grid-scroll.modern .tile.selected .tile-media,
-.grid-scroll.modern .tile.cursor .tile-media {
-  box-shadow: 0 0 0 2px var(--sel-ring);
+/* Modern: the photos fill the tile, so the plate is a tint over the tile. */
+.grid-scroll.modern .tile-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: none;
+  z-index: 1;
+  transition: background-color 0.12s;
 }
 
-.grid-scroll.modern:not(:focus) .tile.cursor:not(.selected) .tile-media {
-  box-shadow: none;
+.grid-scroll.modern .tile:hover .tile-media::after,
+.grid-scroll.modern:focus .tile.cursor .tile-media::after {
+  background: var(--hover);
+}
+
+.grid-scroll.modern .tile.selected .tile-media::after {
+  background: var(--sel-plate);
+}
+
+.grid-scroll.modern .tile.selected:hover .tile-media::after {
+  background: var(--sel-plate-hover);
 }
 
 .mfolder {
@@ -1727,4 +1739,12 @@ input {
 
 .group-action:hover {
   background: var(--hover);
+}
+
+/* Controls on a tile stay above the Modern selection tint. */
+.tile-trash,
+.tile-badges,
+.mfolder-count,
+.task-indicator.ti-tile {
+  z-index: 2;
 }

@@ -75,11 +75,11 @@ photo similarity and quality.
       errors should be shown and path should be reverted if bad. In general, this is more like a Microsoft Windows
       behavior.
 
-- [ ] Folder on hover fix: now when folder is on hover, hover looks strange and ugly - improve GUI in that place.
+- [x] Folder on hover fix: now when folder is on hover, hover looks strange and ugly - improve GUI in that place.
 
-- [ ] **Modern view**
-    - [ ] It should be possible to select "Classic" and "Modern" looks in Settings.
-    - [ ] Modern view stops drawing standard folder like images that wrap 4 photos, but instead of it, it draws a modern
+- [x] **Modern view**
+    - [x] It should be possible to select "Classic" and "Modern" looks in Settings.
+    - [x] Modern view stops drawing standard folder like images that wrap 4 photos, but instead of it, it draws a modern
       looking box that has thin bezels and photos tries taking as much space as possible.
-    - [ ] Modern view in general drastically reduces padding and margin of photos views.
-    - [ ] Modern view is applicable only to photos view and folders view.
+    - [x] Modern view in general drastically reduces padding and margin of photos views.
+    - [x] Modern view is applicable only to photos view and folders view.
