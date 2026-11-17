@@ -1,7 +1,7 @@
 import { createResource, createSignal, onMount, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { api, errorMessage, Look, QualitySensitivity, Settings, SortKey } from "../lib/api";
+import { api, errorMessage, QualitySensitivity, Settings, SortKey } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { initTasks } from "../lib/tasks";
 import { actionState, runAction } from "../lib/actions";
@@ -10,11 +10,6 @@ const SENSITIVITIES: { value: QualitySensitivity; label: string }[] = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
-];
-
-const LOOKS: { value: Look; label: string }[] = [
-  { value: "classic", label: "Classic" },
-  { value: "modern", label: "Modern" },
 ];
 
 const CACHE_LIMITS = [256, 512, 1024, 2048, 5120, 10240, 20480];
@@ -45,25 +40,6 @@ export function SettingsView() {
           <form onSubmit={(e) => e.preventDefault()}>
             <fieldset>
               <legend>Grid</legend>
-              <div class="field">
-                <span class="label" id="look-label">
-                  Look
-                </span>
-                {/* Classic: folder shapes and wide spacing. Modern: thin-bezel boxes and tight spacing. */}
-                <div class="segmented" role="radiogroup" aria-labelledby="look-label">
-                  {LOOKS.map((o) => (
-                    <button
-                      type="button"
-                      role="radio"
-                      aria-checked={(v().look ?? "classic") === o.value}
-                      classList={{ on: (v().look ?? "classic") === o.value }}
-                      onClick={() => update({ look: o.value })}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
               <div class="field">
                 <label for="sort">Default sort order</label>
                 <div class="inline">

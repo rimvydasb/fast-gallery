@@ -30,13 +30,11 @@ import { FolderTile, ImageTile } from "../components/Tile";
 import { openContextMenu } from "../components/ContextMenu";
 import { groupLabel, imageCount } from "../lib/format";
 import { task, taskText } from "../lib/tasks";
-import { look } from "../lib/ui";
 
-/** Spacing of the grid for each look: gap between tiles, padding around the grid, label height. */
-export const METRICS = {
-  classic: { gap: 14, pad: 18, label: 40 },
-  modern: { gap: 4, pad: 6, label: 22 },
-} as const;
+/** Gap between tiles, padding around the grid, and label height. */
+const GAP = 4;
+const PAD = 6;
+const LABEL = 22;
 /** Height of a group header: the label and the horizontal line. */
 export const HEADER_H = 38;
 
@@ -71,13 +69,9 @@ export function GridView() {
   const [height, setHeight] = createSignal(600);
   const [scrollTop, setScrollTop] = createSignal(0);
 
-  const m = () => METRICS[look()];
-  const gap = () => m().gap;
-  const pad = () => m().pad;
-  const labelH = () => m().label;
-  const rowH = () => tileSize() + labelH() + gap();
-  const cols = createMemo(() => Math.max(1, Math.floor((width() - 2 * pad() + gap()) / (tileSize() + gap()))));
-  const offsetX = () => Math.max(pad(), (width() - (cols() * tileSize() + (cols() - 1) * gap())) / 2);
+  const rowH = () => tileSize() + LABEL + GAP;
+  const cols = createMemo(() => Math.max(1, Math.floor((width() - 2 * PAD + GAP) / (tileSize() + GAP))));
+  const offsetX = () => Math.max(PAD, (width() - (cols() * tileSize() + (cols() - 1) * GAP)) / 2);
   createEffect(() => setGridCols(cols()));
 
   const layout = createMemo(() => {
@@ -87,7 +81,7 @@ export function GridView() {
     const gs = groups();
     const fc = folderCount();
     const secs: Section[] = [];
-    let y = pad();
+    let y = PAD;
     const push = (start: number, count: number, header: GroupInfo | null) => {
       if (count <= 0) return;
       const rows = Math.ceil(count / c);
@@ -106,7 +100,7 @@ export function GridView() {
         start += g.count;
       }
     }
-    return { secs, height: y + pad() - gap() };
+    return { secs, height: y + PAD - GAP };
   });
 
   /** The section of the entry at index i. */
@@ -127,7 +121,7 @@ export function GridView() {
     if (!s) return { x: 0, y: 0 };
     const local = i - s.start;
     const c = cols();
-    return { x: offsetX() + (local % c) * (tileSize() + gap()), y: s.rowsTop + Math.floor(local / c) * rowH() };
+    return { x: offsetX() + (local % c) * (tileSize() + GAP), y: s.rowsTop + Math.floor(local / c) * rowH() };
   };
 
   /** The entries of the rows between y = t0 and y = t1: [first index, end index). */
@@ -171,9 +165,9 @@ export function GridView() {
     const row = Math.floor((i - s.start) / cols());
     // The first row of a group scrolls its header into view too.
     const top = row === 0 ? s.top : s.rowsTop + row * rowH();
-    const bottom = s.rowsTop + (row + 1) * rowH() - gap();
-    if (top < scroller.scrollTop) scroller.scrollTop = top - pad();
-    else if (bottom > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = bottom - scroller.clientHeight + pad();
+    const bottom = s.rowsTop + (row + 1) * rowH() - GAP;
+    if (top < scroller.scrollTop) scroller.scrollTop = top - PAD;
+    else if (bottom > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = bottom - scroller.clientHeight + PAD;
   };
 
   gridMoveImpl = (i: number, dir: -1 | 1) => {
@@ -283,7 +277,6 @@ export function GridView() {
   return (
     <div
       class="grid-scroll"
-      classList={{ modern: look() === "modern" }}
       ref={scroller}
       tabIndex={0}
       role="listbox"
@@ -315,7 +308,7 @@ export function GridView() {
                 class="group-header"
                 style={{
                   transform: `translate(${offsetX()}px, ${s.top}px)`,
-                  width: `${cols() * tileSize() + (cols() - 1) * gap()}px`,
+                  width: `${cols() * tileSize() + (cols() - 1) * GAP}px`,
                   height: `${HEADER_H - 6}px`,
                 }}
               >
@@ -368,7 +361,7 @@ export function GridView() {
                   style={{
                     transform: `translate(${at().x}px, ${at().y}px)`,
                     width: `${tileSize()}px`,
-                    height: `${tileSize() + labelH()}px`,
+                    height: `${tileSize() + LABEL}px`,
                   }}
                   onMouseDown={(e) => onTileMouseDown(e, idx())}
                   onDblClick={() => runAction("nav.openEntry", idx())}

@@ -4,7 +4,6 @@ import { badgeInfo, badgeLabels } from "../lib/badges";
 import { TaskIndicator } from "./TaskIndicator";
 import { requestThumb } from "../lib/thumbQueue";
 import { imageCount } from "../lib/format";
-import { look } from "../lib/ui";
 
 /** THM-02: 512 px thumbnails for tiles larger than 256 px or on Retina displays. */
 export function thumbSizeFor(tile: number): 256 | 512 {
@@ -96,15 +95,6 @@ export function ImageTile(props: TileProps) {
   );
 }
 
-/** The folder tile of the current look. */
-export function FolderTile(props: TileProps) {
-  return (
-    <Show when={look() === "modern"} fallback={<ClassicFolderTile {...props} />}>
-      <ModernFolderTile {...props} />
-    </Show>
-  );
-}
-
 function FolderGlyph(props: { class?: string }) {
   return (
     <svg class={props.class} viewBox="0 0 16 16" aria-hidden="true">
@@ -114,10 +104,10 @@ function FolderGlyph(props: { class?: string }) {
 }
 
 /**
- * Modern look: a box with a thin bezel. The previews fill the box as a mosaic (1 to 4 cells), and
- * the image count is a pill on the box.
+ * FPV-01, FPV-11, FPV-12, FPV-13: a box with a thin bezel. The previews fill the box as a mosaic
+ * (1 to 4 cells), and the image count is a pill on the box.
  */
-function ModernFolderTile(props: TileProps) {
+export function FolderTile(props: TileProps) {
   const images = () => props.preview?.images ?? [];
   return (
     <>
@@ -143,42 +133,9 @@ function ModernFolderTile(props: TileProps) {
         </div>
         <TaskIndicator variant="tile" root={props.path} />
       </div>
-      <div class="tile-label mfolder-label" title={props.entry.n}>
+      <div class="tile-label" title={props.entry.n}>
         <FolderGlyph class="mfolder-icon" />
         <span class="tile-name">{props.entry.n}</span>
-      </div>
-    </>
-  );
-}
-
-/** FPV-01, FPV-11, FPV-12, FPV-13: up to 4 previews in a 2×2 layout on a folder shape. */
-function ClassicFolderTile(props: TileProps) {
-  const size = () => (props.tileSize > 256 && window.devicePixelRatio > 1 ? 512 : 256) as 256 | 512;
-  return (
-    <>
-      <div class="tile-media">
-        <div class="folder-shape">
-          <div class="folder-tab" />
-          <div class="folder-body">
-            <div class="folder-grid" data-count={props.preview?.images.length ?? 0}>
-              <For each={props.preview?.images ?? []}>
-                {(img) => (
-                  <div class="folder-cell">
-                    <QueuedThumb path={img.p} mtime={img.m} size={size()} priority={props.index} fit="cover" />
-                  </div>
-                )}
-              </For>
-            </div>
-          </div>
-        </div>
-        {/* QUAL-11: the scan indicator on the folder of the task root. */}
-        <TaskIndicator variant="tile" root={props.path} />
-      </div>
-      <div class="tile-label" title={props.entry.n}>
-        <span class="tile-name">{props.entry.n}</span>
-        <Show when={props.preview}>
-          {(p) => <span class="tile-count">{imageCount(p().count, p().more)}</span>}
-        </Show>
       </div>
     </>
   );

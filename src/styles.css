@@ -16,8 +16,6 @@
   --sel-plate: rgba(10, 100, 216, 0.18);
   --sel-plate-hover: rgba(10, 100, 216, 0.24);
   --folder-back: #8fbcef;
-  --folder-front: #a9cdf5;
-  --folder-shade: rgba(20, 60, 120, 0.12);
   --tile-bg: rgba(0, 0, 0, 0.035);
   --danger: #d70015;
   --edit: #e8590c;
@@ -43,8 +41,6 @@
     --sel-plate: rgba(61, 139, 253, 0.26);
     --sel-plate-hover: rgba(61, 139, 253, 0.32);
     --folder-back: #3f6fa8;
-    --folder-front: #5385c2;
-    --folder-shade: rgba(0, 0, 0, 0.25);
     --tile-bg: rgba(255, 255, 255, 0.04);
     --danger: #ff453a;
     --edit: #ff8a3d;
@@ -444,7 +440,7 @@ input {
 .tile-media {
   flex: 1;
   position: relative;
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--tile-bg);
   display: flex;
   align-items: center;
@@ -452,50 +448,10 @@ input {
   overflow: hidden;
 }
 
-.tile.folder .tile-media {
-  background: transparent;
-  overflow: visible;
-  transition: background-color 0.12s;
-}
-
-/* Hover: a soft rounded plate behind the tile; the folder shape lifts a little. */
-.tile:hover:not(.selected) .tile-media {
-  background: var(--hover);
-}
-
-.tile:not(.folder):hover:not(.selected) .tile-media {
-  background: color-mix(in srgb, var(--tile-bg), var(--fg) 6%);
-}
-
-.folder-body,
-.folder-tab {
-  transition: filter 0.12s;
-}
-
-.tile.folder:hover .folder-body,
-.tile.folder:hover .folder-tab {
-  filter: brightness(1.05) saturate(1.05);
-}
-
-/* Selection: the hover plate in a soft blue, with no ring or border. */
-.tile.selected .tile-media {
-  background: var(--sel-plate);
-}
-
-.tile.selected:hover .tile-media {
-  background: var(--sel-plate-hover);
-}
-
-/* The keyboard cursor on a tile that is not selected: the hover plate. */
-.grid-scroll:focus .tile.cursor:not(.selected) .tile-media {
-  background: var(--hover);
-}
-
 .tile-media > img {
-  max-width: 92%;
-  max-height: 92%;
+  max-width: 100%;
+  max-height: 100%;
   opacity: 0;
-  border-radius: 3px;
 }
 
 .tile-media img.loaded,
@@ -504,47 +460,52 @@ input {
   transition: opacity 0.12s;
 }
 
-.tile-label {
-  height: 40px;
-  padding: 4px 2px 0;
-  text-align: center;
-  font-size: 12px;
-  line-height: 15px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+/* Hover, keyboard cursor and selection: a tint over the tile, with no ring or border. */
+.tile-media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: none;
+  z-index: 1;
+  transition: background-color 0.12s;
 }
 
-.tile-label,
-.tile-name {
+.tile:hover .tile-media::after,
+.grid-scroll:focus .tile.cursor .tile-media::after {
+  background: var(--hover);
+}
+
+.tile.selected .tile-media::after {
+  background: var(--sel-plate);
+}
+
+.tile.selected:hover .tile-media::after {
+  background: var(--sel-plate-hover);
+}
+
+.tile-label {
+  height: 22px;
+  padding: 4px 4px 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 14px;
   white-space: nowrap;
+  overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
 }
 
-.tile-label {
-  display: block;
+.tile-name {
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.tile.folder .tile-label {
-  display: flex;
-}
-
-.tile-name {
-  overflow: hidden;
+  max-width: 100%;
   font-weight: 500;
 }
 
-.tile-count {
-  color: var(--fg-faint);
-  font-size: 11px;
-}
-
-.tile.selected .tile-label .tile-name,
-.tile.selected:not(.folder) .tile-label {
+.tile.selected .tile-label {
   color: var(--accent);
 }
 
@@ -590,112 +551,7 @@ input {
   background: var(--danger);
 }
 
-/* FPV-01: folder shape with a 2×2 preview. */
-.folder-shape {
-  width: 92%;
-  height: 80%;
-  position: relative;
-  margin-top: 6%;
-}
-
-.folder-tab {
-  position: absolute;
-  top: -7%;
-  left: 0;
-  width: 40%;
-  height: 14%;
-  background: var(--folder-back);
-  border-radius: 6px 6px 0 0;
-}
-
-.folder-body {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(var(--folder-front), var(--folder-back));
-  border-radius: 2px 8px 8px 8px;
-  box-shadow: inset 0 -2px 0 var(--folder-shade), 0 1px 2px var(--folder-shade);
-  padding: 6%;
-}
-
-.folder-grid {
-  width: 100%;
-  height: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
-  gap: 4%;
-}
-
-.folder-cell {
-  border-radius: 4px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.folder-cell img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0;
-}
-
-.folder-cell .thumb-error {
-  width: 100%;
-  height: 100%;
-  border: 0;
-  font-size: 14px;
-}
-
-/* ---------- Modern look: tight spacing, thin-bezel folder boxes ---------- */
-.grid-scroll.modern .tile-media {
-  border-radius: 6px;
-}
-
-.grid-scroll.modern .tile-media > img {
-  max-width: 100%;
-  max-height: 100%;
-  border-radius: 0;
-}
-
-.grid-scroll.modern .tile-label {
-  height: 22px;
-  padding: 4px 4px 0;
-  font-size: 11px;
-  line-height: 14px;
-}
-
-.grid-scroll.modern .tile.folder .tile-media {
-  overflow: hidden;
-}
-
-/* Modern: the photos fill the tile, so the plate is a tint over the tile. */
-.grid-scroll.modern .tile-media::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: transparent;
-  pointer-events: none;
-  z-index: 1;
-  transition: background-color 0.12s;
-}
-
-.grid-scroll.modern .tile:hover .tile-media::after,
-.grid-scroll.modern:focus .tile.cursor .tile-media::after {
-  background: var(--hover);
-}
-
-.grid-scroll.modern .tile.selected .tile-media::after {
-  background: var(--sel-plate);
-}
-
-.grid-scroll.modern .tile.selected:hover .tile-media::after {
-  background: var(--sel-plate-hover);
-}
-
+/* FPV-01: a box with a thin bezel; the previews fill it as a mosaic of 1 to 4 cells. */
 .mfolder {
   position: absolute;
   inset: 0;
@@ -781,17 +637,16 @@ input {
   background: transparent;
 }
 
-.grid-scroll.modern .tile.folder:hover:not(.selected) .mfolder {
+.tile.folder:hover:not(.selected) .mfolder {
   border-color: color-mix(in srgb, var(--line), var(--fg) 18%);
 }
 
-.grid-scroll.modern .tile.folder:hover .mfolder-cell img.loaded {
+.tile.folder:hover .mfolder-cell img.loaded {
   filter: brightness(1.06);
 }
 
-.grid-scroll.modern .tile.folder .tile-label.mfolder-label {
+.tile.folder .tile-label {
   display: flex;
-  flex-direction: row;
   justify-content: center;
   align-items: center;
   gap: 4px;

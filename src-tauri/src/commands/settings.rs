@@ -25,17 +25,6 @@ pub struct FolderPrefs {
     pub group: crate::scan::arrange::GroupKey,
 }
 
-/// The look of the photo and folder grid.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Look {
-    /// Folder shapes with a 2×2 preview, wide spacing.
-    #[default]
-    Classic,
-    /// Thin-bezel folder boxes with a mosaic preview, tight spacing.
-    Modern,
-}
-
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -55,8 +44,6 @@ pub struct Settings {
     pub quality_sensitivity: crate::quality::Sensitivity,
     /// Maximum number of photos in one bad photo scan.
     pub scan_cap: u32,
-    /// The look of the grid.
-    pub look: Look,
 }
 
 impl Default for Settings {
@@ -76,7 +63,6 @@ impl Default for Settings {
             folder_prefs: HashMap::new(),
             quality_sensitivity: crate::quality::Sensitivity::Medium,
             scan_cap: 200,
-            look: Look::Classic,
         }
     }
 }
@@ -203,7 +189,5 @@ mod tests {
         }
         let s = st.update(serde_json::json!({"qualitySensitivity": "high"})).unwrap();
         assert_eq!(s.quality_sensitivity, crate::quality::Sensitivity::High);
-        assert_eq!(st.get().look, Look::Classic);
-        assert_eq!(st.update(serde_json::json!({"look": "modern"})).unwrap().look, Look::Modern);
     }
 }

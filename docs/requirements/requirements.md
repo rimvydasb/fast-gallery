@@ -260,7 +260,7 @@ The app MUST meet these budgets on an Apple M1 with 8 GB RAM and an SSD.
 
 ### Folder Preview
 
-- [x] **FPV-01** Each folder tile MUST show up to 4 preview images in a 2×2 layout on a folder shape.
+- [x] **FPV-01** Each folder tile MUST show up to 4 preview images as a mosaic that fills a box with a thin border.
 - [x] **FPV-02** The preview images MUST be the first images in the current sort order of the grid.
 - [x] **FPV-03** A change of the grid sort order MUST resolve the folder previews again.
 - [x] **FPV-04** The `PreviewIndex` key MUST contain the folder path and the sort order.
@@ -272,7 +272,7 @@ The app MUST meet these budgets on an Apple M1 with 8 GB RAM and an SSD.
 - [x] **FPV-10** The recursive search MUST skip hidden folders and macOS package folders, for example `.app` and
   `.photoslibrary`.
 - [x] **FPV-11** A folder with 1 to 3 images MUST show only the images it has.
-- [x] **FPV-12** A folder with no images MUST show an empty folder shape.
+- [x] **FPV-12** A folder with no images MUST show a folder icon in an empty box.
 - [x] **FPV-13** The folder tile MUST show the folder name and the number of images seen in the folder tree while the preview is resolved, with a "+" suffix when the traversal stopped before the whole tree was seen.
 - [x] **FPV-14** `FolderPreviewService` MUST resolve previews in parallel, visible folder tiles first.
 - [x] **FPV-15** `FolderPreviewService` MUST send each result to the frontend as a `folder-preview-ready` event.
@@ -444,7 +444,7 @@ decisions are ADR-001 to ADR-006 in `architecture-adr.md`.
 
 - The app is a browser and viewer. It does not edit image pixels.
 - The folder preview search has limits on depth and on entry count (FPV-07, FPV-08). A folder with images only below
-  these limits shows an empty folder shape.
+  these limits shows an empty box with a folder icon.
 
 ## Future Improvements
 
