@@ -133,17 +133,33 @@ impl SettingsStore {
         s
     }
 
-    /// Records an opened folder as the last folder (NAV-11) and in Recent folders (NAV-08).
-    /// Returns the new settings when they changed, so the caller can tell the windows.
-    pub fn visit(&self, folder: &str) -> Option<Settings> {
+    /// Records an opened folder as the last folder (NAV-11) and, when `recent` is true, in Recent
+    /// folders (NAV-08). Returns the new settings when they changed, so the caller can tell the
+    /// windows.
+    pub fn visit(&self, folder: &str, recent: bool) -> Option<Settings> {
+        self.record(Some(folder), recent.then_some(folder))
+    }
+
+    /// Puts a folder at the top of Recent folders (NAV-08) without a change to the last folder.
+    pub fn add_recent(&self, folder: &str) -> Option<Settings> {
+        self.record(None, Some(folder))
+    }
+
+    fn record(&self, last: Option<&str>, recent: Option<&str>) -> Option<Settings> {
         let mut d = self.data.lock();
-        if d.last_folder.as_deref() == Some(folder) && d.recents.first().map(String::as_str) == Some(folder) {
+        let last_same = last.is_none_or(|f| d.last_folder.as_deref() == Some(f));
+        let recent_same = recent.is_none_or(|f| d.recents.first().map(String::as_str) == Some(f));
+        if last_same && recent_same {
             return None;
         }
-        d.last_folder = Some(folder.to_string());
-        d.recents.retain(|r| r != folder);
-        d.recents.insert(0, folder.to_string());
-        d.recents.truncate(MAX_RECENTS);
+        if let Some(f) = last {
+            d.last_folder = Some(f.to_string());
+        }
+        if let Some(f) = recent {
+            d.recents.retain(|r| r != f);
+            d.recents.insert(0, f.to_string());
+            d.recents.truncate(MAX_RECENTS);
+        }
         let s = d.clone();
         drop(d);
         // Write off the command thread; a lost write only loses a recent entry.
@@ -192,5 +208,20 @@ mod tests {
         }
         let s = st.update(serde_json::json!({"qualitySensitivity": "high"})).unwrap();
         assert_eq!(s.quality_sensitivity, crate::quality::Sensitivity::High);
+    }
+
+    #[test]
+    fn visit_without_recent_only_sets_last_folder() {
+        let t = tempfile::tempdir().unwrap();
+        let st = SettingsStore::load(t.path().join("settings.json"));
+        assert!(st.visit("/photos", true).is_some());
+        let s = st.visit("/empty", false).unwrap();
+        assert_eq!(s.last_folder.as_deref(), Some("/empty"));
+        assert_eq!(s.recents, vec!["/photos".to_string()]);
+        assert!(st.visit("/empty", false).is_none());
+        assert_eq!(st.visit("/empty", true).unwrap().recents, vec!["/empty".to_string(), "/photos".to_string()]);
+        let s = st.add_recent("/later").unwrap();
+        assert_eq!(s.last_folder.as_deref(), Some("/empty"));
+        assert_eq!(s.recents[0], "/later");
     }
 }

@@ -111,11 +111,39 @@ pub async fn list_dir(
     })
     .await??;
     state.watcher.watch(window.app_handle(), window.label(), &p, Arc::clone(&state.thumbs), Arc::clone(&state.previews.index));
-    if let Some(s) = state.settings.visit(&path) {
-        let _ = window.app_handle().emit("settings-changed", &s);
-    }
+    record_visit(window.app_handle(), &state, &path, &p, &listing);
     crate::trace("list_dir done");
     Ok(DirListing::new(path, listing))
+}
+
+/// NAV-08, NAV-11: an opened folder becomes the last folder. It goes to Recent folders only when
+/// its tree has photos: a folder without photos in it or in its subfolders is not worth a return.
+/// When the folder has subfolders but no direct photos, the subfolders are counted in the
+/// background, with the limits of a folder preview.
+fn record_visit(app: &AppHandle, state: &AppState, path: &str, dir: &Path, listing: &arrange::Listing) {
+    let has_images = listing.entries.iter().any(|e| !e.d);
+    let has_dirs = listing.entries.iter().any(|e| e.d);
+    let notify = |app: &AppHandle, s: Option<settings::Settings>| {
+        if let Some(s) = s {
+            let _ = app.emit("settings-changed", &s);
+        }
+    };
+    notify(app, state.settings.visit(path, has_images));
+    if has_images || !has_dirs {
+        return;
+    }
+    let app = app.clone();
+    let path = path.to_string();
+    let dir = dir.to_path_buf();
+    let limits = limits(state);
+    crate::pools::scan().spawn_fifo(move || {
+        let state = app.state::<AppState>();
+        let p = preview::resolve(&dir, SortSpec::default(), limits, &state.previews.index);
+        // An incomplete count of 0 is not proof that the tree has no photos.
+        if p.count > 0 || p.more {
+            notify(&app, state.settings.add_recent(&path));
+        }
+    });
 }
 
 fn limits(state: &AppState) -> preview::Limits {
