@@ -36,6 +36,10 @@ const COMMANDS: &[&str] = &[
     "list_collection",
     "remove_collection",
     "get_quality",
+    "start_flatten",
+    "list_flat",
+    "continue_flatten",
+    "cancel_flatten",
     // Debug builds only; granted at runtime (see lib.rs, mod dev).
     "dev_log",
 ];

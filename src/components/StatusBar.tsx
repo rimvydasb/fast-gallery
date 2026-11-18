@@ -2,6 +2,16 @@ import { Show } from "solid-js";
 import { plural } from "../lib/format";
 import { folderCount, images, loading, selection, setTileSize, tileSize, MAX_TILE, MIN_TILE } from "../lib/store";
 import { task, taskText } from "../lib/tasks";
+import { flat, flatWalking } from "../lib/flatten";
+import { location } from "../lib/navigation";
+import { runAction } from "../lib/actions";
+
+/** FLAT-06: the walk of the flat location of the window, while it runs. */
+const walk = () => {
+  const l = location();
+  const s = flat();
+  return l?.kind === "flat" && s?.root === l.path && (flatWalking(s) || s.refreshing) ? s : null;
+};
 
 /** GRID-17: number of folders, images, and the selection count. GRID-06: tile size slider. */
 export function StatusBar() {
@@ -11,6 +21,17 @@ export function StatusBar() {
         {plural(folderCount(), "folder", "folders")}, {plural(images().length, "image", "images")}
         <Show when={selection().size > 0}> — {selection().size.toLocaleString()} selected</Show>
         <Show when={task()}>{(t) => <span class="status-task"> — {taskText(t())}</span>}</Show>
+        <Show when={walk()}>
+          {(s) => (
+            <span class="status-task">
+              {" — "}
+              {s().refreshing ? "Updating" : "Flattening"}… {plural(s().count, "photo", "photos")}
+              <button class="status-btn" onClick={() => runAction("view.cancelFlatten")}>
+                Cancel
+              </button>
+            </span>
+          )}
+        </Show>
         <Show when={loading()}>
           <span class="spinner" aria-label="Loading" />
         </Show>

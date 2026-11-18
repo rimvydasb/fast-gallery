@@ -1,17 +1,29 @@
 import { createResource, For, Show } from "solid-js";
 import { api, baseName } from "../lib/api";
 import { settings } from "../lib/store";
-import { path } from "../lib/navigation";
+import { location, path } from "../lib/navigation";
 import { runAction } from "../lib/actions";
+import { locationKey, parseLocation, recentLabel } from "../lib/locations";
 
+/** The full path of a location key; a flat location says so. */
+function tooltip(key: string): string {
+  const l = parseLocation(key);
+  return l.kind === "flat" ? `${l.path} (Flattened)` : l.kind === "disk" ? l.path : recentLabel(key);
+}
+
+/** `target`: a location key, for example a folder path or "flat:<path>" (FLAT-15). */
 function Item(props: { label: string; target: string; icon: string; onRemove?: () => void; removeLabel?: string }) {
+  const current = () => {
+    const l = location();
+    return !!l && locationKey(l) === props.target;
+  };
   return (
     <li class="side-item-row">
       <button
         class="side-item"
-        classList={{ current: path() === props.target }}
-        title={props.target}
-        onClick={() => runAction("nav.open", props.target)}
+        classList={{ current: current() }}
+        title={tooltip(props.target)}
+        onClick={() => runAction("nav.open", parseLocation(props.target))}
       >
         <span class="side-icon" aria-hidden="true">
           {props.icon}
@@ -67,11 +79,11 @@ export function Sidebar() {
           <For each={recents()} fallback={<li class="side-empty">No recent folders</li>}>
             {(r) => (
               <Item
-                label={baseName(r)}
+                label={recentLabel(r)}
                 target={r}
                 icon="◷"
                 onRemove={() => runAction("view.removeRecent", r)}
-                removeLabel={`Remove ${baseName(r)} from Recent`}
+                removeLabel={`Remove ${recentLabel(r)} from Recent`}
               />
             )}
           </For>

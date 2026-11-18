@@ -1,3 +1,4 @@
+import { Show } from "solid-js";
 import { GroupKey, SortKey } from "../lib/api";
 import { editMode, group, infoOpen, sort } from "../lib/store";
 import { location } from "../lib/navigation";
@@ -86,6 +87,8 @@ export const ICONS = {
   scan: "M3 7V4.5A1.5 1.5 0 0 1 4.5 3H7M13 3h2.5A1.5 1.5 0 0 1 17 4.5V7M17 13v2.5a1.5 1.5 0 0 1-1.5 1.5H13M7 17H4.5A1.5 1.5 0 0 1 3 15.5V13M4 10h12",
   cancel: "M5 5l10 10M15 5L5 15",
   remove: "M4 6h12M8 6V4h4v2M6 6l1 10h6l1-10",
+  /** Stacked layers pressed into 1: a flattened folder tree. */
+  flatten: "M3 5h14M3 9h14M5 13l5 4 5-4M10 9v8",
   /** A text field with a cursor: the breadcrumb bar becomes a path field. */
   pathEdit: "M2.5 6h15v8h-15zM6.5 8v4M5.5 8h2M5.5 12h2M10 10h5",
 };
@@ -140,6 +143,10 @@ export function Toolbar() {
         <span class="control-caption">Group</span>
         <select value={group()} onChange={(e) => runAction("view.group", e.currentTarget.value as GroupKey)}>
           <option value="none">None</option>
+          {/* FLAT-13: the folders of a flattened tree. */}
+          <Show when={location()?.kind === "flat"}>
+            <option value="folder">Folder</option>
+          </Show>
           {GROUPS.map((g) => (
             <optgroup label={g.label}>
               {g.items.map((i) => (

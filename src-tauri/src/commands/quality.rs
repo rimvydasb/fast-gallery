@@ -23,6 +23,9 @@ use crate::AppState;
 pub fn start_scan_bad_photos(window: WebviewWindow, state: State<'_, AppState>, root: String) -> CmdResult<TaskStatus> {
     state.tasks.guard()?;
     let root = if root.len() > 1 { root.trim_end_matches('/').to_string() } else { root };
+    if super::is_ignored_path(&state.ignore_set(), Path::new(&root)) {
+        return Err(CmdError::ignored());
+    }
     match std::fs::metadata(&root) {
         Ok(m) if m.is_dir() => {}
         Ok(_) => return Err(CmdError { kind: "notDir", message: "A scan needs a folder.".into() }),
@@ -31,6 +34,7 @@ pub fn start_scan_bad_photos(window: WebviewWindow, state: State<'_, AppState>, 
     let s = state.settings.get();
     let thresholds = Thresholds::for_sensitivity(s.quality_sensitivity);
     let cap = s.scan_cap as usize;
+    let ignore = state.ignore_set();
     let store = Arc::clone(&state.collections);
     let index = Arc::clone(&state.previews.index);
     let app = window.app_handle().clone();
@@ -42,8 +46,9 @@ pub fn start_scan_bad_photos(window: WebviewWindow, state: State<'_, AppState>, 
         vec![root],
         Arc::new(app),
         move |ctx| {
-            let walker = TreeWalker::new(Path::new(&r), WalkOptions { max_depth: None, max_images: Some(cap) })
-                .with_cancel(ctx.cancel_token().clone());
+            let walker = TreeWalker::new(Path::new(&r), WalkOptions { max_images: Some(cap), ..Default::default() })
+                .with_cancel(ctx.cancel_token().clone())
+                .with_ignore(ignore);
             let sink = BadPhotoSink::new(thresholds, store, r.clone());
             let mut cache = AnalysisCache::new(index);
             Ok(run_pipeline(walker, Arc::new(Pair(QualityAnalyzer, ScreenshotAnalyzer)), sink, &mut cache, ctx, max_in_flight()))

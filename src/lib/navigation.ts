@@ -71,7 +71,7 @@ export function normPath(p: string): string {
 
 function toLocation(t: Location | string): Location {
   if (typeof t === "string") return { kind: "disk", path: normPath(t) };
-  return t.kind === "disk" ? { kind: "disk", path: normPath(t.path) } : t;
+  return t.kind === "collection" ? t : { ...t, path: normPath(t.path) };
 }
 
 function pushHistory(prev: Location | null, target: Location, push: boolean) {
@@ -90,7 +90,7 @@ export async function navigate(t: Location | string, opts: NavOptions = {}) {
   const c = provider.caps(target);
   const s = settings();
   const prefs = c.folderPrefs ? s?.folderPrefs[locationKey(target)] : undefined;
-  const nextSort = prefs?.sort ?? s?.defaultSort ?? sort();
+  const nextSort = prefs?.sort ?? provider.defaultSort?.(target) ?? s?.defaultSort ?? sort();
   const nextTile = prefs?.tileSize ?? s?.defaultTileSize ?? tileSize();
   // The grouping is per location; a location without stored prefs has none.
   const nextGroup = prefs?.group ?? "none";

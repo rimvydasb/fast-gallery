@@ -5,6 +5,7 @@ pub mod analyze;
 pub mod collections;
 pub mod edit;
 pub mod files;
+pub mod flatten;
 pub mod quality;
 pub mod settings;
 pub mod tasks;
@@ -24,7 +25,7 @@ use crate::AppState;
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CmdError {
-    /// "permission", "notFound", "notDir", "editOff", "busy", "locked", or "other".
+    /// "permission", "notFound", "notDir", "editOff", "busy", "locked", "ignored", or "other".
     pub kind: &'static str,
     pub message: String,
 }
@@ -32,6 +33,10 @@ pub struct CmdError {
 impl CmdError {
     fn other(m: impl ToString) -> Self {
         Self { kind: "other", message: m.to_string() }
+    }
+    /// IGN-10: the folder is in the tree of an ignored folder.
+    pub(crate) fn ignored() -> Self {
+        Self { kind: "ignored", message: "This folder is ignored".into() }
     }
     pub(crate) fn io(path: &Path, e: &std::io::Error) -> Self {
         use std::io::ErrorKind::*;
@@ -89,7 +94,14 @@ impl DirListing {
     }
 }
 
-/// Lists one directory in the grid order and starts to watch it (FSW-01).
+/// True if `p` is in an ignored tree, also through a symbolic link in its path (IGN-10). The
+/// canonical path is read only when the path itself is not ignored.
+pub(crate) fn is_ignored_path(ignore: &crate::scan::ignore::IgnoreSet, p: &Path) -> bool {
+    ignore.in_tree(p) || std::fs::canonicalize(p).is_ok_and(|c| c != p && ignore.in_tree(&c))
+}
+
+/// Lists one directory in the grid order and starts to watch it (FSW-01). A folder in an ignored
+/// tree gets the error `ignored` (IGN-10).
 #[tauri::command]
 pub async fn list_dir(
     window: WebviewWindow,
@@ -101,16 +113,20 @@ pub async fn list_dir(
 ) -> CmdResult<DirListing> {
     let index = Arc::clone(&state.previews.index);
     let th = crate::quality::Thresholds::for_sensitivity(state.settings.get().quality_sensitivity);
+    let ignore = state.ignore_set();
     let p = PathBuf::from(&path);
     let listing = blocking({
         let p = p.clone();
         move || {
-            arrange::list_disk(&p, sort, show_hidden, group.unwrap_or_default(), &index, &th)
+            if is_ignored_path(&ignore, &p) {
+                return Err(CmdError::ignored());
+            }
+            arrange::list_disk(&p, sort, show_hidden, group.unwrap_or_default(), &index, &th, &ignore)
                 .map_err(|e| CmdError::io(&p, &e))
         }
     })
     .await??;
-    state.watcher.watch(window.app_handle(), window.label(), &p, Arc::clone(&state.thumbs), Arc::clone(&state.previews.index));
+    watch(window.app_handle(), &state, window.label(), &p);
     record_visit(window.app_handle(), &state, &path, &p, &listing);
     crate::trace("list_dir done");
     Ok(DirListing::new(path, listing))
@@ -146,8 +162,17 @@ fn record_visit(app: &AppHandle, state: &AppState, path: &str, dir: &Path, listi
     });
 }
 
+/// Starts to watch the folder of a window (FSW-01).
+pub(crate) fn watch(app: &AppHandle, state: &AppState, window: &str, dir: &Path) {
+    state.watcher.watch(app, window, dir, Arc::clone(&state.thumbs), Arc::clone(&state.previews.index), Arc::clone(&state.ignore));
+}
+
 fn limits(state: &AppState) -> preview::Limits {
-    preview::Limits { depth: state.settings.get().preview_depth as usize, max_entries: preview::MAX_ENTRIES }
+    preview::Limits {
+        depth: state.settings.get().preview_depth as usize,
+        max_entries: preview::MAX_ENTRIES,
+        ignore: state.ignore_set(),
+    }
 }
 
 /// Returns the cached previews at once and resolves all folders in the background, in the given
@@ -171,7 +196,7 @@ pub async fn get_folder_previews(
 pub fn refresh_folder_previews(window: WebviewWindow, state: State<'_, AppState>, folders: Vec<String>, sort: SortSpec) {
     let l = limits(&state);
     for f in folders {
-        state.previews.refresh(window.app_handle(), window.label(), f, sort, l);
+        state.previews.refresh(window.app_handle(), window.label(), f, sort, l.clone());
     }
 }
 
@@ -260,10 +285,16 @@ pub fn get_settings(state: State<'_, AppState>) -> settings::Settings {
 
 #[tauri::command]
 pub fn update_settings(app: AppHandle, state: State<'_, AppState>, patch: serde_json::Value) -> CmdResult<settings::Settings> {
-    let old_limit = state.settings.get().cache_limit_mb;
+    let old = state.settings.get();
     let s = state.settings.update(patch).map_err(CmdError::other)?;
-    if s.cache_limit_mb != old_limit {
+    if s.cache_limit_mb != old.cache_limit_mb {
         state.thumbs.cache.set_limit(s.cache_limit_mb * 1024 * 1024);
+    }
+    // IGN-06: a new ignore list. The image counts of the folder previews included the ignored
+    // folders; the windows list again when they get `settings-changed`.
+    if s.ignored_folders != old.ignored_folders {
+        *state.ignore.write() = crate::scan::ignore::IgnoreSet::for_home(&s.ignored_folders);
+        state.previews.index.clear_previews();
     }
     let _ = app.emit("settings-changed", &s);
     Ok(s)
@@ -320,6 +351,7 @@ pub async fn trash_files(window: WebviewWindow, state: State<'_, AppState>, path
     let r = blocking(move || app.state::<AppState>().edit.trash(&label, &paths)).await?;
     let r = r.map_err(|m| CmdError { kind: "editOff", message: m })?;
     state.collections.remove_paths(&r.trashed);
+    state.flats.remove_paths(&r.trashed);
     Ok(r)
 }
 
@@ -332,9 +364,12 @@ pub async fn rename_file(window: WebviewWindow, state: State<'_, AppState>, path
     state.tasks.guard_paths(std::slice::from_ref(&path))?;
     let app = window.app_handle().clone();
     let label = window.label().to_string();
-    blocking(move || app.state::<AppState>().edit.rename(&label, &path, &new_name))
+    let from = path.clone();
+    let to = blocking(move || app.state::<AppState>().edit.rename(&label, &path, &new_name))
         .await?
-        .map_err(CmdError::other)
+        .map_err(CmdError::other)?;
+    state.flats.rename_path(&from, &to);
+    Ok(to)
 }
 
 /// FILE-05, FILE-17: undo of the last move to Trash or rename.
@@ -345,6 +380,9 @@ pub async fn undo_trash(window: WebviewWindow, state: State<'_, AppState>) -> Cm
     let label = window.label().to_string();
     let restored = blocking(move || app.state::<AppState>().edit.undo(&label)).await?.map_err(CmdError::other)?;
     state.collections.restore_paths(&restored);
+    let flats = Arc::clone(&state.flats);
+    let back = restored.clone();
+    blocking(move || flats.restore_paths(&back)).await?;
     Ok(restored)
 }
 
@@ -407,9 +445,10 @@ pub fn new_window(app: AppHandle) -> CmdResult<()> {
     crate::open_main_window(&app, None).map(|_| ()).map_err(CmdError::other)
 }
 
+/// Opens Settings; `section` scrolls to a section, for example "ignored" (IGN-09).
 #[tauri::command]
-pub fn open_settings(app: AppHandle) -> CmdResult<()> {
-    crate::open_settings_window(&app).map_err(CmdError::other)
+pub fn open_settings(app: AppHandle, section: Option<String>) -> CmdResult<()> {
+    crate::open_settings_window(&app, section.as_deref()).map_err(CmdError::other)
 }
 
 /// A file or folder that macOS asked the app to open before the window was ready (PLAT-06).

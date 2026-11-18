@@ -102,6 +102,8 @@ export function selectionMenuItems(): MenuItem[] {
           }),
         );
       items.push(actionItem("view.reveal", [cur], { label: "Reveal Folder in Finder", icon: ICONS.reveal }));
+      // FLAT-01: flatten the open disk folder.
+      if (loc?.kind === "disk") items.push(actionItem("nav.flatten", cur, { icon: ICONS.flatten }));
       const scan = c.scan ? scanItem(cur) : null;
       if (scan) items.push(sep, scan);
     }
@@ -120,12 +122,17 @@ export function selectionMenuItems(): MenuItem[] {
       }),
     );
     if (!one.d) items.push({ label: "Open With", icon: ICONS.openWith, submenu: openWithItems(onePath) });
+    // FLAT-12: the disk folder of a photo of a flattened tree.
+    if (!one.d && loc?.kind === "flat") items.push(actionItem("nav.showInFolder", onePath, { icon: ICONS.folder }));
     if (one.d)
       items.push(
         actionItem("view.toggleFavorite", onePath, {
           label: favs.includes(onePath) ? "Remove from Favorites" : "Add to Favorites",
           icon: ICONS.star,
         }),
+        // FLAT-01, IGN-08.
+        actionItem("nav.flatten", onePath, { icon: ICONS.flatten }),
+        actionItem("view.ignoreFolder", onePath, { icon: ICONS.eyeOff }),
       );
   }
   items.push(actionItem("view.reveal", undefined, { icon: ICONS.reveal }), actionItem("view.copy", undefined, { icon: ICONS.copy }));

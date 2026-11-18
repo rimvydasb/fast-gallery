@@ -76,3 +76,38 @@
 - **Rejected:** Hash distance only - it does not find the example burst without many false groups.
 - **Rejected:** A neural embedding - a model file and a runtime for a first version.
 - **Consequences:** Assumption: the weights and thresholds are estimates from a few example photos. A change of the signature needs a new `ALGO_VERSION`; a change of a threshold needs no new analysis. The comparisons are O(n²) in the worst case.
+
+## ADR-010: A flatten is a per-window listing, not a `TaskRunner` task
+
+- **Status:** Accepted
+- **Context:** "Flatten" shows the photos of a folder tree in 1 grid. `TaskRunner` runs 1 task for the whole app and locks file changes in its tree (ADR-001, ADR-006). A flatten only reads.
+- **Decision:** `start_flatten` runs a `TreeWalker` on the scan pool with a `CancelToken` that the window owns. `FlatStore` in `AppState` holds at most 1 session for each window label; a new start cancels the previous session of the window, and a window close removes it. The store keeps the paths found so far; `flat-progress` (at most every 500 ms) tells the window to call `list_flat`, which sorts and groups them like `list_collection`.
+- **Rejected:** A `TaskKind::Flatten` - it reuses the progress UI, but it blocks file operations and every other task for no reason.
+- **Rejected:** Append each batch in the frontend - the sort order breaks, or the frontend needs its own sort.
+- **Consequences:** A flatten does not block a bad photo scan, and a scan does not block it; 2 windows can flatten 2 folders at the same time. `trash_files`, `rename_file`, and `undo_trash` update the sessions, as they update the collections. A walk after a file change keeps the last listing until it ends. Revisit if a flatten gets a write side effect, for example cached analysis.
+
+## ADR-011: The cost of a flatten is controlled by streaming, a cap, and cancel
+
+- **Status:** Accepted
+- **Context:** A flatten of a broad root (a volume, the home folder) can find a very large number of photos. A camera card (`DCIM/100CANON`, `DCIM/101CANON`) is the most useful case.
+- **Decision:** A flatten is allowed on every folder except `/` and ignored folders. The walk streams results, stops at `flatten_cap` (Settings, default 20,000), and stops when the user cancels or leaves the location. "Show More" resumes the stored walker, so the walk does not read the tree again.
+- **Rejected:** A confirmation dialog for broad roots - friction on the common case, and it does not limit the cost.
+- **Rejected:** A fixed depth limit - photo archives are often deep (`Year/Month/Event`).
+- **Consequences:** The user pays for the walk only while they look at it. A file change in the tree starts a new walk only for an image file or a folder that is not hidden and not ignored (`FsChange.photos`), so the app data churn in a home folder does not restart the walk.
+
+## ADR-012: A flatten stays on the volume of its root
+
+- **Status:** Accepted
+- **Context:** A folder can contain a mount point of another disk or a network share, which can be slow or hang.
+- **Decision:** With `WalkOptions.same_volume`, the walker does not enter a folder whose device ID (`st_dev`) differs from the device ID of its parent.
+- **Rejected:** Follow mount points - a flatten of a folder can then walk a whole network share.
+- **Consequences:** APFS firmlinks do not break the rule: `/`, `/Users`, and `/Applications` have the same device ID. `/System/Volumes/Data` has its own ID, but it is an ignored folder.
+
+## ADR-013: An ignored folder and its whole tree are blocked, also for an explicit open
+
+- **Status:** Accepted
+- **Context:** The system trees of macOS (`/System`, `/Library`, `/private`, and the large app data folders of `~/Library`) contain images that are not user photos, and some (automount points) can hang a read.
+- **Decision:** `Settings.ignored_folders` holds exact paths (absolute, or starting with `~/`), compared without case. `read_entries` skips an ignored folder, so the grid, the folder previews, the walker, the bad photo scan, and a flatten never show it. `list_dir` returns the error `ignored` for a folder in an ignored tree, and the grid shows "This folder is ignored" with "Open Settings". This applies to every way to open a folder.
+- **Rejected:** List the folder with a banner after an explicit open - it keeps the folder reachable, but the user wants one strict rule.
+- **Rejected:** Name or glob patterns - a pattern such as `Library` also hides a user folder with that name in a photo archive.
+- **Consequences:** The defaults ignore 6 subfolders of `~/Library`, not `~/Library` itself, so iCloud Drive and Messages attachments stay reachable. Revisit the patterns if the user asks to ignore a name everywhere, for example `@eaDir` of a Synology NAS.

@@ -12,6 +12,7 @@ import {
   GroupInfo,
   GroupKey,
   AnalysisNeed,
+  isIgnoredPath,
   joinPath,
   parentPath,
   Settings,
@@ -47,6 +48,13 @@ export const [loadError, setLoadError] = createSignal<CmdError | null>(null);
 export const [loading, setLoading] = createSignal(false);
 /** Incremented on each navigation, so that the grid resets its scroll position. */
 export const [navSeq, setNavSeq] = createSignal(0);
+/** Incremented when the folder previews must be requested again, for example a new ignore list. */
+export const [previewEpoch, setPreviewEpoch] = createSignal(0);
+/** The home folder of the user, for "~/" in the ignored folders. */
+export const [homeDir, setHomeDir] = createSignal("");
+
+/** True if `p` is in the tree of an ignored folder (D6). */
+export const isIgnored = (p: string) => isIgnoredPath(p, settings()?.ignoredFolders ?? [], homeDir());
 
 /** Folder previews by absolute folder path. */
 export const [previews, setPreviews] = createStore<Record<string, FolderPreview>>({});
@@ -341,6 +349,15 @@ export async function toggleFavorite(p: string) {
   const s = await api.toggleFavorite(p);
   setSettings(s);
   toast(s.favorites.includes(p) ? `Added “${baseName(p)}” to Favorites.` : `Removed “${baseName(p)}” from Favorites.`, "info");
+}
+
+/** IGN-08: adds a folder to the ignored folders. */
+export async function ignoreFolder(p: string) {
+  const s = settings();
+  if (!s) return;
+  // No local `setSettings`: `settings-changed` must see the change, so that each window lists again (IGN-06).
+  await api.updateSettings({ ignoredFolders: [...s.ignoredFolders, p] });
+  toast(`“${baseName(p)}” is ignored. Settings shows the list.`, "info", { label: "Open Settings", actionId: "view.openIgnoredSettings" });
 }
 
 /** Removes one folder from Recent folders; the other entries keep their order. */

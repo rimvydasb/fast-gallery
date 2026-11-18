@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-start-flatten"
+description = "Enables the start_flatten command without any pre-configured scope."
+commands.allow = ["start_flatten"]
+
+[[permission]]
+identifier = "deny-start-flatten"
+description = "Denies the start_flatten command without any pre-configured scope."
+commands.deny = ["start_flatten"]

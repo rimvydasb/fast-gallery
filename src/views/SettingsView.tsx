@@ -1,7 +1,7 @@
-import { createResource, createSignal, onMount, Show } from "solid-js";
+import { createResource, createSignal, For, onMount, Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { api, errorMessage, QualitySensitivity, Settings, SortKey } from "../lib/api";
+import { api, errorMessage, QualitySensitivity, Settings, SettingsPatch, SortKey } from "../lib/api";
 import { formatBytes } from "../lib/format";
 import { initTasks } from "../lib/tasks";
 import { actionState, runAction } from "../lib/actions";
@@ -14,6 +14,82 @@ const SENSITIVITIES: { value: QualitySensitivity; label: string }[] = [
 
 const CACHE_LIMITS = [256, 512, 1024, 2048, 5120, 10240, 20480];
 
+/** The section of `#settings/<section>`, for example "ignored" (IGN-09). */
+export function settingsSection(hash: string): string | null {
+  const m = hash.match(/^#settings\/(\w+)/);
+  return m ? m[1] : null;
+}
+
+function scrollToSection(section: string | null) {
+  if (!section) return;
+  const el = document.getElementById(`section-${section}`);
+  el?.scrollIntoView({ block: "start" });
+  el?.querySelector<HTMLElement>("[tabindex], button")?.focus({ preventScroll: true });
+}
+
+/** IGN-01: the ignored folders, with "Add Folder…", "Remove", and "Restore Defaults". */
+export function IgnoredFolders(props: { list: string[]; update: (patch: SettingsPatch) => Promise<unknown> }) {
+  const [picked, setPicked] = createSignal<string | null>(null);
+  const add = async () => {
+    const p = await api.pickFolder();
+    if (p && !props.list.includes(p)) await props.update({ ignoredFolders: [...props.list, p] });
+    if (p) setPicked(p);
+  };
+  const remove = async () => {
+    const p = picked();
+    if (!p) return;
+    const i = props.list.indexOf(p);
+    const next = props.list.filter((x) => x !== p);
+    await props.update({ ignoredFolders: next });
+    setPicked(next[Math.min(i, next.length - 1)] ?? null);
+  };
+  const onKey = (e: KeyboardEvent) => {
+    const i = picked() ? props.list.indexOf(picked()!) : -1;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = Math.max(0, Math.min(props.list.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)));
+      setPicked(props.list[n] ?? null);
+      document.getElementById(`ignored-${n}`)?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Backspace" || e.key === "Delete") {
+      e.preventDefault();
+      remove();
+    }
+  };
+  return (
+    <>
+      <div class="ignored-list" role="listbox" aria-label="Ignored folders" tabIndex={0} onKeyDown={onKey}>
+        <For each={props.list} fallback={<div class="ignored-empty">No ignored folders</div>}>
+          {(p, i) => (
+            <div
+              id={`ignored-${i()}`}
+              role="option"
+              class="ignored-item"
+              classList={{ on: picked() === p }}
+              aria-selected={picked() === p}
+              title={p}
+              onClick={() => setPicked(p)}
+            >
+              {p}
+            </div>
+          )}
+        </For>
+      </div>
+      <div class="inline ignored-buttons">
+        <button type="button" class="btn" onClick={add}>
+          Add Folder…
+        </button>
+        <button type="button" class="btn" disabled={!picked() || !props.list.includes(picked()!)} onClick={remove}>
+          Remove
+        </button>
+        <span class="tb-spacer" />
+        <button type="button" class="btn" onClick={() => props.update({ ignoredFolders: null }).then(() => setPicked(null))}>
+          Restore Defaults
+        </button>
+      </div>
+    </>
+  );
+}
+
 /** SET-01..SET-03, THM-10. Changes are saved at once (SET-04). */
 export function SettingsView() {
   const [s, setS] = createSignal<Settings | null>(null);
@@ -22,16 +98,20 @@ export function SettingsView() {
   const [clearError, setClearError] = createSignal<string | null>(null);
   // The value under the slider while it moves; saved on release.
   const [capDraft, setCapDraft] = createSignal<number | null>(null);
+  const [flatCapDraft, setFlatCapDraft] = createSignal<number | null>(null);
 
   onMount(async () => {
     setS(await api.getSettings());
     await listen<Settings>("settings-changed", (e) => setS(e.payload));
+    // IGN-09: "Open Settings" of the ignored message opens the "Ignored folders" list.
+    await listen<string>("settings-section", (e) => scrollToSection(e.payload));
+    queueMicrotask(() => scrollToSection(settingsSection(window.location.hash)));
     // D6: Clear Cache is not available while a task runs.
     await initTasks();
     await getCurrentWindow().show();
   });
 
-  const update = async (patch: Partial<Settings>) => setS(await api.updateSettings(patch));
+  const update = async (patch: SettingsPatch) => setS(await api.updateSettings(patch));
 
   return (
     <main class="settings" onKeyDown={(e) => e.key === "Escape" && getCurrentWindow().close()}>
@@ -197,6 +277,33 @@ export function SettingsView() {
                   <output>{(capDraft() ?? v().scanCap).toLocaleString()} photos</output>
                 </div>
               </div>
+            </fieldset>
+            <fieldset>
+              <legend>Flatten</legend>
+              <div class="field">
+                <label for="flatcap">Flatten limit</label>
+                <div class="inline">
+                  {/* FLAT-08: 1,000 to 100,000 photos, default 20,000; also the step of "Show More". */}
+                  <input
+                    id="flatcap"
+                    type="range"
+                    min={1000}
+                    max={100000}
+                    step={1000}
+                    value={flatCapDraft() ?? v().flattenCap}
+                    onInput={(e) => setFlatCapDraft(Number(e.currentTarget.value))}
+                    onChange={(e) => update({ flattenCap: Number(e.currentTarget.value) }).then(() => setFlatCapDraft(null))}
+                  />
+                  <output>{(flatCapDraft() ?? v().flattenCap).toLocaleString()} photos</output>
+                </div>
+              </div>
+            </fieldset>
+            <fieldset id="section-ignored">
+              <legend>Ignored folders</legend>
+              <p class="hint ignored-hint">
+                Fast Gallery never shows, previews, scans, or flattens these folders and their subfolders.
+              </p>
+              <IgnoredFolders list={v().ignoredFolders} update={update} />
             </fieldset>
             <fieldset>
               <legend>Viewer</legend>

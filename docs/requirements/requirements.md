@@ -440,11 +440,70 @@ decisions are ADR-001 to ADR-006 in `architecture-adr.md`.
 > Assumption: QUAL-24 is measured on the M4 Pro (25.8 ms, see `benchmarks.md`). The M1 result is not measured yet.
 > QUAL-28 needs the scripted run with 10,000 photos from the Verification section of `photo-quality-spec.md`.
 
+### Flatten
+
+The user selects "Flatten" in the context menu of a folder; the window shows the photos of the folder tree in one grid.
+The design is in `docs/story/flatten.md`; the decisions are ADR-010 to ADR-013 in `architecture-adr.md`.
+
+- [x] **FLAT-01** The context menus of 1 selected folder tile and of a disk folder background MUST have "Flatten".
+- [x] **FLAT-02** "Flatten" MUST be disabled on `/` and on an ignored folder or a folder inside one.
+- [x] **FLAT-03** "Flatten" MUST open the `flat` location in the same window.
+- [x] **FLAT-04** The walk MUST use the rules FPV-09, FPV-10, IGN-03, and the one-volume rule (ADR-012).
+- [x] **FLAT-05** If the tree has photos, the grid MUST show the first photos within 500 ms of the walk start.
+- [x] **FLAT-06** The status bar MUST show "Flattening… N photos" and a Cancel button while the walk runs.
+- [x] **FLAT-07** The walk MUST stop when the window leaves the `flat` location or closes.
+- [x] **FLAT-08** The walk MUST stop at `flatten_cap` photos. Settings MUST contain `flatten_cap`: minimum 1,000, default
+  20,000, maximum 100,000.
+- [x] **FLAT-09** At the cap, the grid MUST show the banner "Showing the first N photos" with "Show More". "Show More"
+  MUST continue the walk for `flatten_cap` more photos.
+- [x] **FLAT-10** A `flat` location MUST support the viewer, the info panel, sort, group, selection, and FILE-01 to
+  FILE-14, as QUAL-22.
+- [x] **FLAT-11** The info panel and the tile tooltip MUST show the folder of the photo, relative to the flattened root.
+- [x] **FLAT-12** The context menu of a photo in a `flat` location MUST have "Show in Folder". It opens the disk folder
+  of the photo and selects the photo.
+- [x] **FLAT-13** The group menu MUST have "Folder" in a `flat` location. It groups photos by their relative folder.
+- [x] **FLAT-14** A file system change inside the root MUST start a new walk. The grid MUST keep scroll and
+  selection (FSW-05).
+- [x] **FLAT-15** Recents MUST store a `flat` location as `flat:<path>` and show it as "<name> (Flattened)".
+- [x] **FLAT-16** A `flat` location MUST sort by date modified, newest first, until the user changes the sort. The
+  changed sort MUST be stored per location (`folderPrefs`).
+
+> Context: FLAT-14 starts a new walk only for a change of an image file or a folder that is not hidden and not ignored
+> (`FsChange.photos`). A change during a walk starts 1 new walk after it. The grid shows the last result until the new
+> walk ends.
+
+> Context: FLAT-05 was measured with a flatten of a home folder on the development Mac: the first photos showed after
+> 52 ms.
+
+### Ignored Folders
+
+- [x] **IGN-01** Settings MUST contain the "Ignored folders" list with "Add Folder…", "Remove", and "Restore Defaults".
+- [x] **IGN-02** `Settings.ignored_folders` MUST store each path as entered. A path that starts with `~/` MUST resolve to
+  the home folder when settings load.
+- [x] **IGN-03** `read_entries` MUST skip a folder entry whose path is in the ignored set. This applies to the grid,
+  `FolderPreviewService`, `TreeWalker`, the bad photo scan, and a flatten.
+- [x] **IGN-04** The ignored set MUST compare paths without case and without a trailing `/`.
+- [x] **IGN-05** An open of a folder in an ignored tree MUST show no tiles. The grid center MUST show "This folder is
+  ignored" and "Open Settings".
+- [x] **IGN-06** A change of the list MUST refresh the open windows and invalidate the `PreviewIndex` entries.
+- [x] **IGN-07** `Settings::default()` MUST contain the default ignored folders of `docs/story/flatten.md`.
+- [x] **IGN-08** The folder tile context menu MUST have "Ignore Folder". It adds the folder to the list.
+- [x] **IGN-09** "Open Settings" in the ignored message MUST open Settings at the "Ignored folders" list.
+- [x] **IGN-10** `list_dir` MUST return the error `ignored` for a folder in an ignored tree. The frontend MUST show the
+  IGN-05 message for this error.
+
+> Context: `list_dir`, `start_flatten`, and `start_scan_bad_photos` also check the canonical path, so a symbolic link
+> such as `/Volumes/Macintosh HD` does not open an ignored tree.
+
 ## Limitations
 
 - The app is a browser and viewer. It does not edit image pixels.
 - The folder preview search has limits on depth and on entry count (FPV-07, FPV-08). A folder with images only below
   these limits shows an empty box with a folder icon.
+- The date-taken order in a `flat` location reads the EXIF date of each photo that is not in `PreviewIndex`. The first
+  listing of a large tree in this order is slow.
+- A flatten does not enter other volumes (ADR-012). A folder that is a mount point inside the tree is not flattened.
+- An ignored folder still uses the FSEvents watch of its parent. Events inside it are ignored only after classification.
 
 ## Future Improvements
 

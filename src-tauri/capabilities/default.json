@@ -47,6 +47,10 @@
     "allow-list-collections",
     "allow-list-collection",
     "allow-remove-collection",
-    "allow-get-quality"
+    "allow-get-quality",
+    "allow-start-flatten",
+    "allow-list-flat",
+    "allow-continue-flatten",
+    "allow-cancel-flatten"
   ]
 }

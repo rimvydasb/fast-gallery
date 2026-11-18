@@ -8,6 +8,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, EventTarget, Runtime};
 
+use super::ignore::IgnoreSet;
 use super::index::PreviewIndex;
 use super::{fill_taken, read_entries, sort_entries, ListOptions, SortKey, SortSpec};
 
@@ -36,15 +37,17 @@ pub struct FolderPreview {
     pub more: bool,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Limits {
     pub depth: usize,
     pub max_entries: usize,
+    /// Folders that the preview does not enter or count (IGN-03).
+    pub ignore: IgnoreSet,
 }
 
 impl Default for Limits {
     fn default() -> Self {
-        Self { depth: DEFAULT_DEPTH, max_entries: MAX_ENTRIES }
+        Self { depth: DEFAULT_DEPTH, max_entries: MAX_ENTRIES, ignore: IgnoreSet::default() }
     }
 }
 
@@ -62,7 +65,8 @@ struct State<'a> {
 /// (FPV-06), within the depth and entry limits (FPV-07, FPV-08). Symbolic links, hidden folders,
 /// and package folders are skipped (FPV-09, FPV-10).
 pub fn resolve(folder: &Path, sort: SortSpec, limits: Limits, index: &PreviewIndex) -> FolderPreview {
-    let mut st = State { sort, limits, budget: limits.max_entries, images: Vec::new(), count: 0, more: false, index };
+    let budget = limits.max_entries;
+    let mut st = State { sort, limits, budget, images: Vec::new(), count: 0, more: false, index };
     visit(folder, 0, &mut st);
     FolderPreview {
         folder: folder.to_string_lossy().into_owned(),
@@ -81,7 +85,7 @@ fn visit(dir: &Path, depth: usize, st: &mut State) {
     // The root folder is read in full, so that its direct image count is exact.
     let max = if depth == 0 { usize::MAX } else { st.budget };
     let Ok((mut entries, read)) =
-        read_entries(dir, &ListOptions { show_hidden: false, max_entries: max, follow_links: false })
+        read_entries(dir, &ListOptions { show_hidden: false, max_entries: max, follow_links: false, ignore: &st.limits.ignore })
     else {
         return;
     };
@@ -161,6 +165,7 @@ impl FolderPreviewService {
             let app = app.clone();
             let window = window.to_string();
             let cached_map = Arc::clone(&cached_map);
+            let limits = limits.clone();
             crate::pools::scan().spawn_fifo(move || {
                 if !this.is_current(&window, gen) {
                     return;
@@ -234,7 +239,7 @@ mod tests {
         let idx = PreviewIndex::in_memory().unwrap();
         let p = resolve(&root, SortSpec::default(), Limits::default(), &idx);
         assert_eq!(names(&p), ["deep6.jpg"]);
-        let p = resolve(&root, SortSpec::default(), Limits { depth: 5, max_entries: MAX_ENTRIES }, &idx);
+        let p = resolve(&root, SortSpec::default(), Limits { depth: 5, ..Default::default() }, &idx);
         assert!(p.images.is_empty());
     }
 
@@ -247,7 +252,7 @@ mod tests {
         }
         touch(&root.join("b/img.jpg"));
         let idx = PreviewIndex::in_memory().unwrap();
-        let p = resolve(&root, SortSpec::default(), Limits { depth: 6, max_entries: 20 }, &idx);
+        let p = resolve(&root, SortSpec::default(), Limits { depth: 6, max_entries: 20, ..Default::default() }, &idx);
         assert!(p.images.is_empty());
         let p = resolve(&root, SortSpec::default(), Limits::default(), &idx);
         assert_eq!(names(&p), ["img.jpg"]);

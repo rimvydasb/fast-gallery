@@ -50,7 +50,7 @@ pub async fn list_collection(
                 })
             })
             .collect();
-        let listing = arrange::list_paths(entries, sort, group.unwrap_or_default(), &index, &th);
+        let listing = arrange::list_paths(entries, sort, group.unwrap_or_default(), &index, &th, None);
         Ok(DirListing::new(format!("collection:{id}"), listing))
     })
     .await?

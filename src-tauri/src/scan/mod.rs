@@ -1,6 +1,7 @@
 //! DirScanner: directory listing, image detection, and sort order.
 
 pub mod arrange;
+pub mod ignore;
 pub mod index;
 pub mod preview;
 
@@ -211,12 +212,14 @@ pub fn sort_entries(entries: &mut [Entry], sort: SortSpec) {
     });
 }
 
-pub struct ListOptions {
+pub struct ListOptions<'a> {
     pub show_hidden: bool,
     /// Stop after this many raw directory entries (FPV-08). usize::MAX for no limit.
     pub max_entries: usize,
     /// Follow symbolic links (grid: yes; recursive preview search: no, FPV-09).
     pub follow_links: bool,
+    /// Folders that are never listed (IGN-03).
+    pub ignore: &'a ignore::IgnoreSet,
 }
 
 /// Lists the folders and images of one directory, unsorted. Non-image files are skipped
@@ -250,7 +253,7 @@ pub fn read_entries(dir: &Path, opts: &ListOptions) -> std::io::Result<(Vec<Entr
         let md = if is_link { fs::metadata(de.path()) } else { de.metadata() };
         let Ok(md) = md else { continue };
         if md.is_dir() {
-            if is_package_name(name) {
+            if is_package_name(name) || opts.ignore.contains(&dir.join(name)) {
                 continue;
             }
             out.push(Entry { n: name.to_string(), d: true, s: 0, m: mtime_ms(&md), ..Default::default() });
@@ -308,9 +311,10 @@ pub fn list_dir(
     sort: SortSpec,
     show_hidden: bool,
     index: &index::PreviewIndex,
+    ignore: &ignore::IgnoreSet,
 ) -> std::io::Result<Vec<Entry>> {
     let (mut entries, _) =
-        read_entries(dir, &ListOptions { show_hidden, max_entries: usize::MAX, follow_links: true })?;
+        read_entries(dir, &ListOptions { show_hidden, max_entries: usize::MAX, follow_links: true, ignore })?;
     if sort.key == SortKey::Taken {
         fill_taken(dir, &mut entries, index);
     }
@@ -336,6 +340,24 @@ mod tests {
         assert!(!is_image_name("x.txt"));
         assert!(!is_image_name(".jpg"));
         assert!(is_package_name("Photos Library.photoslibrary"));
+    }
+
+    #[test]
+    fn read_entries_skips_ignored_folders() {
+        let t = tempfile::tempdir().unwrap();
+        let r = t.path();
+        for d in ["Caches", "Keep", "Linked"] {
+            std::fs::create_dir(r.join(d)).unwrap();
+        }
+        std::fs::write(r.join("a.jpg"), b"x").unwrap();
+        let root = r.to_str().unwrap();
+        // The link to an ignored folder is not ignored: only the exact path is (D7).
+        let ignore = ignore::IgnoreSet::new(&[format!("{root}/CACHES/"), format!("{root}/Linked")], "/home");
+        let opts = ListOptions { show_hidden: false, max_entries: usize::MAX, follow_links: true, ignore: &ignore };
+        let (mut v, _) = read_entries(r, &opts).unwrap();
+        v.sort_by(|a, b| a.n.cmp(&b.n));
+        let names: Vec<_> = v.iter().map(|e| e.n.as_str()).collect();
+        assert_eq!(names, ["Keep", "a.jpg"]);
     }
 
     #[test]

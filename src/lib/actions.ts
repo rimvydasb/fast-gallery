@@ -2,8 +2,9 @@
 // keyboard shortcuts, sidebar and breadcrumb clicks, and native menu events call `runAction`; a
 // control reads `isEnabled` and `blockedReason`. The task rule is generic: it uses only the action
 // category and, for file changes, the target paths.
-import { api, Entry, errorMessage, GroupKey, SortSpec } from "./api";
+import { api, baseName, Entry, errorMessage, GroupKey, parentPath, SortSpec } from "./api";
 import { collectionName, collections, Location } from "./locations";
+import { cancelFlatten, flat, flattenMore, flatWalking } from "./flatten";
 import {
   canGoParent,
   caps,
@@ -22,7 +23,9 @@ import {
   DeleteRequest,
   editMode,
   entryPath,
+  ignoreFolder,
   images,
+  isIgnored,
   infoOpen,
   pendingAnalysis,
   requestRename,
@@ -87,6 +90,8 @@ export interface ActionArgs {
   "nav.openFolderDialog": void;
   "nav.newWindow": void;
   "nav.openCollection": string;
+  "nav.flatten": string | null;
+  "nav.showInFolder": string;
   "view.toggleInfo": void;
   "view.toggleSidebar": void;
   "view.toggleHidden": void;
@@ -96,6 +101,10 @@ export interface ActionArgs {
   "view.reveal": string[] | undefined;
   "view.toggleFavorite": string | null;
   "view.removeRecent": string;
+  "view.ignoreFolder": string;
+  "view.openIgnoredSettings": void;
+  "view.cancelFlatten": void;
+  "view.flattenMore": void;
   "view.sort": SortSpec;
   "view.group": GroupKey;
   "view.tileSize": number;
@@ -120,6 +129,14 @@ const EDIT_UNDO = "Turn on edit mode (⌘E) to undo a move to the Trash.";
 const EDIT_RENAME = "Turn on edit mode (⌘E) to rename files.";
 
 const always = () => true;
+
+/** FLAT-02: why a folder cannot be flattened, or null (D3, D6). */
+function flattenBlock(p: string | null): string | null {
+  if (!p) return "Select a folder to flatten.";
+  if (p === "/") return "Flatten a folder inside the disk";
+  if (isIgnored(p)) return "This folder is ignored";
+  return null;
+}
 
 function viewerImagePath(): string | null {
   const vi = viewerIndex();
@@ -199,6 +216,20 @@ const DEFS: { [K in ActionId]: Omit<Action<ActionArgs[K]>, "id"> } = {
     enabled: (id: string) => collections().some((c) => c.id === id),
     run: (id: string) => navigate({ kind: "collection", id }),
   },
+  "nav.flatten": {
+    label: () => "Flatten",
+    category: "navigation",
+    enabled: (p: string | null) => flattenBlock(p) === null,
+    disabledReason: (p: string | null) => flattenBlock(p),
+    run: (p: string | null) => navigate({ kind: "flat", path: p! }),
+  },
+  // FLAT-12: the disk folder of a photo, with the photo selected.
+  "nav.showInFolder": {
+    label: () => "Show in Folder",
+    category: "navigation",
+    enabled: (p: string) => !!p && !!parentPath(p),
+    run: (p: string) => navigate(parentPath(p)!, { select: baseName(p) }),
+  },
 
   // ----- view -----
   "view.toggleInfo": {
@@ -266,6 +297,31 @@ const DEFS: { [K in ActionId]: Omit<Action<ActionArgs[K]>, "id"> } = {
     category: "view",
     enabled: always,
     run: (p: string) => removeRecent(p),
+  },
+  // IGN-08. Like a favorite, a change of the settings only.
+  "view.ignoreFolder": {
+    label: () => "Ignore Folder",
+    category: "view",
+    enabled: (p: string) => !!p && p !== "/" && !isIgnored(p),
+    run: (p: string) => ignoreFolder(p),
+  },
+  "view.openIgnoredSettings": {
+    label: () => "Open Settings",
+    category: "view",
+    enabled: always,
+    run: () => api.openSettings("ignored"),
+  },
+  "view.cancelFlatten": {
+    label: () => "Cancel",
+    category: "view",
+    enabled: () => flatWalking(),
+    run: cancelFlatten,
+  },
+  "view.flattenMore": {
+    label: () => "Show More",
+    category: "view",
+    enabled: () => !!flat()?.capped,
+    run: flattenMore,
   },
   "view.sort": {
     label: () => "Sort",

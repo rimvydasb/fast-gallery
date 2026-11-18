@@ -9,11 +9,13 @@ use tauri::{Manager, State, WebviewWindow};
 
 use super::{CmdError, CmdResult};
 use crate::collections::CollectionStore;
+use crate::flatten::{FlatStore, FLAT_PREFIX};
 use crate::pipeline::{
     max_in_flight, run_pipeline, AnalysisCache, ImageAnalyzer, ListSource, Pair, PipelineSummary, Progress, ResultSink,
     WalkItem,
 };
 use crate::quality::QualityAnalyzer;
+use crate::scan::ignore::IgnoreSet;
 use crate::scan::index::PreviewIndex;
 use crate::scan::{mtime_ms, read_entries, ListOptions};
 use crate::screenshot::ScreenshotAnalyzer;
@@ -54,8 +56,18 @@ pub fn analyze(need: &str, items: Vec<WalkItem>, index: Arc<PreviewIndex>, ctx: 
     }
 }
 
-/// The images of a location: `collection:<id>`, or a folder path (without its subfolders).
-fn images_of(location: &str, show_hidden: bool, store: &CollectionStore) -> Result<Vec<WalkItem>, String> {
+/// The images of a location: `collection:<id>`, `flat:<root>` (the photos that the flat location of
+/// the window shows), or a folder path (without its subfolders).
+fn images_of(
+    location: &str,
+    show_hidden: bool,
+    store: &CollectionStore,
+    flats: &FlatStore,
+    window: &str,
+) -> Result<Vec<WalkItem>, String> {
+    if let Some(root) = location.strip_prefix(FLAT_PREFIX) {
+        return flats.items_of(window, Path::new(root)).ok_or_else(|| "The flattened folder is no longer open.".into());
+    }
     if let Some(id) = location.strip_prefix(COLLECTION_PREFIX) {
         let c = store.get(id).ok_or("The collection no longer exists.")?;
         return Ok(c
@@ -63,14 +75,19 @@ fn images_of(location: &str, show_hidden: bool, store: &CollectionStore) -> Resu
             .iter()
             .filter_map(|it| {
                 let md = std::fs::metadata(&it.path).ok()?;
-                Some(WalkItem { path: it.path.clone().into(), size: md.len(), mtime: mtime_ms(&md) })
+                Some(WalkItem { path: it.path.clone().into(), size: md.len(), mtime: mtime_ms(&md), created: 0 })
             })
             .collect());
     }
     let dir = Path::new(location);
-    let (entries, _) = read_entries(dir, &ListOptions { show_hidden, max_entries: usize::MAX, follow_links: true })
+    let ignore = IgnoreSet::default();
+    let (entries, _) = read_entries(dir, &ListOptions { show_hidden, max_entries: usize::MAX, follow_links: true, ignore: &ignore })
         .map_err(|e| format!("Could not read the folder: {e}"))?;
-    Ok(entries.into_iter().filter(|e| !e.d).map(|e| WalkItem { path: dir.join(&e.n), size: e.s, mtime: e.m }).collect())
+    Ok(entries
+        .into_iter()
+        .filter(|e| !e.d)
+        .map(|e| WalkItem { path: dir.join(&e.n), size: e.s, mtime: e.m, created: e.c })
+        .collect())
 }
 
 /// Starts the analysis of the images that the location shows. The task locks the folder (for a
@@ -88,9 +105,13 @@ pub fn start_analyze_photos(
         return Err(CmdError { kind: "other", message: format!("Unknown analysis “{need}”.") });
     }
     let store = Arc::clone(&state.collections);
-    let (root, locks) = match location.strip_prefix(COLLECTION_PREFIX) {
-        Some(id) => (None, store.get(id).and_then(|c| c.origin).map(|o| vec![o.root]).unwrap_or_default()),
-        None => {
+    let flats = Arc::clone(&state.flats);
+    let label = window.label().to_string();
+    let (root, locks) = match (location.strip_prefix(COLLECTION_PREFIX), location.strip_prefix(FLAT_PREFIX)) {
+        (Some(id), _) => (None, store.get(id).and_then(|c| c.origin).map(|o| vec![o.root]).unwrap_or_default()),
+        // A flat location locks its tree, like a scan of it.
+        (_, Some(r)) => (Some(r.to_string()), vec![r.to_string()]),
+        _ => {
             let dir = if location.len() > 1 { location.trim_end_matches('/').to_string() } else { location.clone() };
             (Some(dir.clone()), vec![dir])
         }
@@ -98,7 +119,7 @@ pub fn start_analyze_photos(
     let index = Arc::clone(&state.previews.index);
     let app = window.app_handle().clone();
     let status = state.tasks.start(TaskKind::AnalyzePhotos, window.label(), root, locks, Arc::new(app), move |ctx| {
-        let items = images_of(&location, show_hidden, &store)?;
+        let items = images_of(&location, show_hidden, &store, &flats, &label)?;
         Ok(analyze(&need, items, index, ctx))
     })?;
     Ok(status)
@@ -136,23 +157,24 @@ mod tests {
         let th = Thresholds::default();
         let name = SortSpec { key: SortKey::Name, desc: false };
 
-        let before = list_disk(d, name, false, GroupKey::Same, &index, &th).unwrap();
+        let no = crate::scan::ignore::IgnoreSet::default();
+        let before = list_disk(d, name, false, GroupKey::Same, &index, &th, &no).unwrap();
         assert_eq!((before.missing, before.need), (3, Some("similarity")));
         assert_eq!(before.groups.len(), 1);
         assert_eq!(before.groups[0].kind, Some("missing"));
 
-        let items = images_of(d.to_str().unwrap(), false, &store).unwrap();
+        let items = images_of(d.to_str().unwrap(), false, &store, &FlatStore::default(), "main").unwrap();
         let r = analyze("both", items.clone(), Arc::clone(&index), &NoCancel);
         assert_eq!((r["scanned"].as_u64(), r["analyzed"].as_u64()), (Some(3), Some(3)));
         assert_eq!(analyze("similarity", items, Arc::clone(&index), &NoCancel)["analyzed"], 0);
 
-        let after = list_disk(d, name, false, GroupKey::Same, &index, &th).unwrap();
+        let after = list_disk(d, name, false, GroupKey::Same, &index, &th, &no).unwrap();
         assert_eq!(after.missing, 0);
         let names: Vec<_> = after.entries.iter().map(|e| e.n.as_str()).collect();
         assert_eq!(names, ["a.png", "c.jpg", "b.png"]);
         let groups: Vec<_> = after.groups.iter().map(|g| (g.label.as_str(), g.count)).collect();
         assert_eq!(groups, [("Duplicates 1", 2), ("No duplicates", 1)]);
         // "both" also filled the quality rows.
-        assert_eq!(list_disk(d, name, false, GroupKey::Quality, &index, &th).unwrap().missing, 0);
+        assert_eq!(list_disk(d, name, false, GroupKey::Quality, &index, &th, &no).unwrap().missing, 0);
     }
 }

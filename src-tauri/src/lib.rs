@@ -3,6 +3,7 @@
 pub mod collections;
 pub mod commands;
 pub mod decode;
+pub mod flatten;
 pub mod pipeline;
 pub mod pools;
 pub mod protocols;
@@ -24,6 +25,8 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, TitleBarStyle, WebviewUrl, We
 use collections::CollectionStore;
 use commands::edit::EditModeState;
 use commands::settings::SettingsStore;
+use flatten::FlatStore;
+use scan::ignore::IgnoreSet;
 use scan::index::PreviewIndex;
 use scan::preview::FolderPreviewService;
 use tasks::TaskRunner;
@@ -75,6 +78,17 @@ pub struct AppState {
     pub tasks: Arc<TaskRunner>,
     /// In-memory collections shown as virtual folders (QUAL-20).
     pub collections: Arc<CollectionStore>,
+    /// The resolved `Settings.ignored_folders` (IGN-03), rebuilt when the list changes.
+    pub ignore: Arc<parking_lot::RwLock<IgnoreSet>>,
+    /// The flat listings, 1 per window (D1).
+    pub flats: Arc<FlatStore>,
+}
+
+impl AppState {
+    /// A copy of the current ignore set.
+    pub fn ignore_set(&self) -> IgnoreSet {
+        self.ignore.read().clone()
+    }
 }
 
 static WINDOW_SEQ: AtomicU32 = AtomicU32::new(1);
@@ -115,11 +129,20 @@ pub fn open_main_window(app: &AppHandle, folder: Option<&str>) -> tauri::Result<
     b.build()
 }
 
-pub fn open_settings_window(app: &AppHandle) -> tauri::Result<()> {
+/// Opens the settings window, or brings it to the front. `section` scrolls it to a section, for
+/// example "ignored" (IGN-09).
+pub fn open_settings_window(app: &AppHandle, section: Option<&str>) -> tauri::Result<()> {
     if let Some(w) = app.get_webview_window("settings") {
+        if let Some(sec) = section {
+            let _ = w.emit_to(tauri::EventTarget::webview_window("settings"), "settings-section", sec);
+        }
         return w.set_focus();
     }
-    WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html#settings".into()))
+    let url = match section {
+        Some(sec) => format!("index.html#settings/{sec}"),
+        None => "index.html#settings".to_string(),
+    };
+    WebviewWindowBuilder::new(app, "settings", WebviewUrl::App(url.into()))
         .title("Settings")
         .inner_size(520.0, 520.0)
         .resizable(false)
@@ -198,7 +221,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 fn on_menu(app: &AppHandle, id: &str) {
     match id {
         "settings" => {
-            let _ = open_settings_window(app);
+            let _ = open_settings_window(app, None);
         }
         "new_window" => {
             let _ = open_main_window(app, None);
@@ -265,6 +288,8 @@ pub fn run() {
                 pending_open: Mutex::new(None),
                 tasks: Arc::new(TaskRunner::default()),
                 collections: Arc::new(CollectionStore::default()),
+                ignore: Arc::new(parking_lot::RwLock::new(IgnoreSet::for_home(&s.ignored_folders))),
+                flats: Arc::new(FlatStore::default()),
             });
             let events = handle.clone();
             app.state::<AppState>().collections.set_listener(Arc::new(move |l| {
@@ -286,6 +311,7 @@ pub fn run() {
                 st.watcher.unwatch(window.label());
                 st.edit.forget(window.label());
                 st.tasks.cancel_for_window(window.label());
+                st.flats.remove_window(window.label());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -325,6 +351,10 @@ pub fn run() {
             commands::collections::list_collections,
             commands::collections::list_collection,
             commands::collections::remove_collection,
+            commands::flatten::start_flatten,
+            commands::flatten::list_flat,
+            commands::flatten::continue_flatten,
+            commands::flatten::cancel_flatten,
             #[cfg(debug_assertions)]
             dev::dev_log,
         ])

@@ -13,6 +13,8 @@ pub const MIN_SCAN_CAP: u32 = 100;
 pub const MAX_SCAN_CAP: u32 = 1000;
 const SCAN_CAP_STEP: u32 = 100;
 pub const MAX_TILE: u32 = 512;
+pub const MIN_FLATTEN_CAP: u32 = 1_000;
+pub const MAX_FLATTEN_CAP: u32 = 100_000;
 const MAX_RECENTS: usize = 10;
 const MAX_FOLDER_PREFS: usize = 2000;
 
@@ -44,6 +46,11 @@ pub struct Settings {
     pub quality_sensitivity: crate::quality::Sensitivity,
     /// Maximum number of photos in one bad photo scan.
     pub scan_cap: u32,
+    /// Folders that the app never lists, previews, scans, or flattens (IGN-02), as entered: absolute
+    /// paths or paths that start with `~/`.
+    pub ignored_folders: Vec<String>,
+    /// The number of photos after which a flatten stops, and the step of "Show More" (FLAT-08).
+    pub flatten_cap: u32,
 }
 
 impl Default for Settings {
@@ -63,6 +70,8 @@ impl Default for Settings {
             folder_prefs: HashMap::new(),
             quality_sensitivity: crate::quality::Sensitivity::Medium,
             scan_cap: 200,
+            ignored_folders: crate::scan::ignore::DEFAULT_IGNORED.iter().map(|s| s.to_string()).collect(),
+            flatten_cap: 20_000,
         }
     }
 }
@@ -75,6 +84,10 @@ impl Settings {
         self.slideshow_seconds = self.slideshow_seconds.clamp(1, 600);
         let cap = (self.scan_cap + SCAN_CAP_STEP / 2) / SCAN_CAP_STEP * SCAN_CAP_STEP;
         self.scan_cap = cap.clamp(MIN_SCAN_CAP, MAX_SCAN_CAP);
+        self.flatten_cap = self.flatten_cap.clamp(MIN_FLATTEN_CAP, MAX_FLATTEN_CAP);
+        self.ignored_folders.retain(|p| !p.trim().is_empty());
+        let mut seen = std::collections::HashSet::new();
+        self.ignored_folders.retain(|p| seen.insert(p.clone()));
         for p in self.folder_prefs.values_mut() {
             p.tile_size = p.tile_size.clamp(MIN_TILE, MAX_TILE);
         }
@@ -106,13 +119,18 @@ impl SettingsStore {
         write_json(&self.path, s);
     }
 
-    /// Merges the top-level keys of `patch` into the settings and saves them.
+    /// Merges the top-level keys of `patch` into the settings and saves them. A key with the value
+    /// `null` gets its default value, for example "Restore Defaults" of the ignored folders.
     pub fn update(&self, patch: serde_json::Value) -> Result<Settings, String> {
         let mut d = self.data.lock();
         let mut cur = serde_json::to_value(&*d).map_err(|e| e.to_string())?;
         if let (Some(obj), serde_json::Value::Object(p)) = (cur.as_object_mut(), patch) {
             for (k, v) in p {
-                obj.insert(k, v);
+                if v.is_null() {
+                    obj.remove(&k);
+                } else {
+                    obj.insert(k, v);
+                }
             }
         }
         let mut s: Settings = serde_json::from_value(cur).map_err(|e| e.to_string())?;
@@ -209,6 +227,38 @@ mod tests {
         }
         let s = st.update(serde_json::json!({"qualitySensitivity": "high"})).unwrap();
         assert_eq!(s.quality_sensitivity, crate::quality::Sensitivity::High);
+    }
+
+    #[test]
+    fn old_settings_file_gets_default_ignored_folders() {
+        let t = tempfile::tempdir().unwrap();
+        let path = t.path().join("settings.json");
+        std::fs::write(&path, br#"{"showHidden": true, "scanCap": 300, "recents": ["/a"]}"#).unwrap();
+        let s = SettingsStore::load(path).get();
+        assert!(s.show_hidden);
+        assert_eq!(s.scan_cap, 300);
+        assert_eq!(s.recents, vec!["/a".to_string()]);
+        assert_eq!(s.ignored_folders, crate::scan::ignore::DEFAULT_IGNORED);
+        assert_eq!(s.flatten_cap, 20_000);
+    }
+
+    #[test]
+    fn ignored_folders_are_kept_as_entered_and_null_restores_the_defaults() {
+        let t = tempfile::tempdir().unwrap();
+        let st = SettingsStore::load(t.path().join("settings.json"));
+        let s = st.update(serde_json::json!({"ignoredFolders": ["~/Junk", "", "/X", "/X"]})).unwrap();
+        assert_eq!(s.ignored_folders, vec!["~/Junk".to_string(), "/X".to_string()]);
+        let s = st.update(serde_json::json!({"ignoredFolders": null})).unwrap();
+        assert_eq!(s.ignored_folders, crate::scan::ignore::DEFAULT_IGNORED);
+    }
+
+    #[test]
+    fn flatten_cap_is_clamped() {
+        let t = tempfile::tempdir().unwrap();
+        let st = SettingsStore::load(t.path().join("settings.json"));
+        for (v, want) in [(5, 1_000), (50_000, 50_000), (1_000_000, 100_000)] {
+            assert_eq!(st.update(serde_json::json!({"flattenCap": v})).unwrap().flatten_cap, want, "{v}");
+        }
     }
 
     #[test]

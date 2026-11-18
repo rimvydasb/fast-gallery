@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show, untrack } from "solid-js";
-import { api, GroupInfo } from "../lib/api";
+import { api, CmdError, GroupInfo } from "../lib/api";
 import {
   cursor,
   editMode,
@@ -10,6 +10,7 @@ import {
   groups,
   loadError,
   navSeq,
+  previewEpoch,
   previews,
   requestPreviews,
   selectOnly,
@@ -30,6 +31,73 @@ import { FolderTile, ImageTile } from "../components/Tile";
 import { openContextMenu } from "../components/ContextMenu";
 import { groupLabel, imageCount } from "../lib/format";
 import { task, taskText } from "../lib/tasks";
+import { flat } from "../lib/flatten";
+import { plural } from "../lib/format";
+
+/** FLAT-09: the walk of the flat location stopped at the cap. */
+const cappedFlat = () => {
+  const l = location();
+  const s = flat();
+  return l?.kind === "flat" && s?.root === l.path && s.capped ? s : null;
+};
+
+/** The center of the grid when the location cannot be listed. IGN-05: an ignored folder. */
+export function LoadErrorView(props: { error: CmdError }) {
+  return (
+    <Show
+      when={props.error.kind === "ignored"}
+      fallback={
+        <div class="error-state" role="alert">
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="error-icon">
+            <path
+              d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3z"
+              fill="currentColor"
+            />
+          </svg>
+          <p>{props.error.message}</p>
+          <Show when={props.error.kind === "permission"}>
+            <p class="hint">
+              macOS protects this folder. To open it, give Fast Gallery Full Disk Access in System Settings,
+              then open the folder again.
+            </p>
+            <button class="btn primary" onClick={() => api.openPrivacySettings()}>
+              Open Privacy Settings
+            </button>
+          </Show>
+        </div>
+      }
+    >
+      <div class="error-state ignored-state" role="status">
+        <svg viewBox="0 0 20 20" aria-hidden="true" class="error-icon">
+          <path d={ICON_EYE_OFF} fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
+        </svg>
+        <p>This folder is ignored</p>
+        <p class="hint">Fast Gallery does not show the content of the folders in the “Ignored folders” list of Settings.</p>
+        <button class="btn primary" onClick={() => runAction("view.openIgnoredSettings")}>
+          Open Settings
+        </button>
+      </div>
+    </Show>
+  );
+}
+
+/** FLAT-09: a banner over the grid when the walk stopped at the cap, with "Show More". */
+export function FlatBanner() {
+  return (
+    <Show when={!loadError() && cappedFlat()}>
+      {(s) => (
+        <div class="flat-banner" role="status">
+          <span>Showing the first {plural(s().count, "photo", "photos")}</span>
+          <button class="btn" onClick={() => runAction("view.flattenMore")}>
+            Show More
+          </button>
+        </div>
+      )}
+    </Show>
+  );
+}
+
+const ICON_EYE_OFF = "M3 3l14 14M8.5 5.2Q9.2 5 10 5c5 0 8 5 8 5a14 14 0 0 1-2.6 3M5.5 6.8C3.5 8.2 2 10 2 10s3 5 8 5q1.2 0 2.3-.4";
 
 /** Gap between tiles, padding around the grid, and label height. */
 const GAP = 4;
@@ -226,7 +294,7 @@ export function GridView() {
 
   // FPV-14: request folder previews, visible folder tiles first.
   createEffect(
-    on([navSeq, sort], () => {
+    on([navSeq, sort, previewEpoch], () => {
       const p = untrack(path);
       if (!p) return;
       const e = untrack(entries);
@@ -404,28 +472,7 @@ export function GridView() {
           <div class="empty-state">{emptyText()}</div>
         </Show>
       </Show>
-      <Show when={loadError()}>
-        {(err) => (
-          <div class="error-state" role="alert">
-            <svg viewBox="0 0 24 24" aria-hidden="true" class="error-icon">
-              <path
-                d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5zm-3 8V7a3 3 0 1 1 6 0v3z"
-                fill="currentColor"
-              />
-            </svg>
-            <p>{err().message}</p>
-            <Show when={err().kind === "permission"}>
-              <p class="hint">
-                macOS protects this folder. To open it, give Fast Gallery Full Disk Access in System Settings,
-                then open the folder again.
-              </p>
-              <button class="btn primary" onClick={() => api.openPrivacySettings()}>
-                Open Privacy Settings
-              </button>
-            </Show>
-          </div>
-        )}
-      </Show>
+      <Show when={loadError()}>{(err) => <LoadErrorView error={err()} />}</Show>
     </div>
   );
 }

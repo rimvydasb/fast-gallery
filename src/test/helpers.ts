@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { Entry, TaskStatus } from "../lib/api";
+import type { Entry, FlatStatus, TaskStatus } from "../lib/api";
 
 export const file = (n: string): Entry => ({ n, d: false, s: 1, m: 1 });
 export const folder = (n: string): Entry => ({ n, d: true, s: 0, m: 1 });
@@ -31,6 +31,26 @@ export const apiMock = () => ({
   pathKind: vi.fn(),
   setFolderPrefs: vi.fn(),
   startAnalyzePhotos: vi.fn(),
+  startFlatten: vi.fn(),
+  listFlat: vi.fn(),
+  continueFlatten: vi.fn(),
+  cancelFlatten: vi.fn(),
+  updateSettings: vi.fn(),
+  openSettings: vi.fn(),
+  pickFolder: vi.fn(),
+  openPrivacySettings: vi.fn(),
+});
+
+/** A flatten session status. */
+export const flatStatus = (root: string, extra: Partial<FlatStatus> = {}): FlatStatus => ({
+  id: "main-1",
+  root,
+  count: 0,
+  done: false,
+  capped: false,
+  cancelled: false,
+  refreshing: false,
+  ...extra,
 });
 
 /** A running scan task with a lock on `root`. */

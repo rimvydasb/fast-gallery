@@ -4,6 +4,8 @@ import { badgeInfo, badgeLabels } from "../lib/badges";
 import { TaskIndicator } from "./TaskIndicator";
 import { requestThumb } from "../lib/thumbQueue";
 import { imageCount } from "../lib/format";
+import { flatFolder } from "../lib/locations";
+import { location } from "../lib/navigation";
 
 /** THM-02: 512 px thumbnails for tiles larger than 256 px or on Retina displays. */
 export function thumbSizeFor(tile: number): 256 | 512 {
@@ -87,8 +89,12 @@ export function ImageTile(props: TileProps) {
           </button>
         </Show>
       </div>
-      {/* In a collection, the tooltip shows the folder of the file. */}
-      <div class="tile-label" title={props.entry.p ? (parentPath(props.entry.p) ?? props.entry.p) : props.entry.n}>
+      {/* In a collection, the tooltip shows the folder of the file; in a flat location, the folder
+          relative to the flattened root (FLAT-11). */}
+      <div
+        class="tile-label"
+        title={props.entry.p ? (flatFolder(location(), props.entry) ?? parentPath(props.entry.p) ?? props.entry.p) : props.entry.n}
+      >
         {props.entry.n}
       </div>
     </>

@@ -4,7 +4,9 @@ import { App } from "./App";
 import { SettingsView } from "./views/SettingsView";
 
 const root = document.getElementById("root")!;
-render(() => (location.hash === "#settings" ? <SettingsView /> : <App />), root);
+// "#settings" or "#settings/<section>" (IGN-09).
+const isSettings = location.hash === "#settings" || location.hash.startsWith("#settings/");
+render(() => (isSettings ? <SettingsView /> : <App />), root);
 
 // Test hook for debug builds (vite build --mode development): exposes the window state.
 if (import.meta.env.MODE === "development") {

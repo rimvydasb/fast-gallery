@@ -13,6 +13,7 @@ export const [pathEditing, setPathEditing] = createSignal(false);
 export function pathText(loc: Location | null): string {
   if (!loc) return "";
   if (loc.kind === "disk") return loc.path;
+  if (loc.kind === "flat") return `${loc.path === "/" ? "" : loc.path}/[Flattened]`;
   const root = collectionRoot(loc.id);
   const tail = `[${collectionName(loc.id)}]`;
   return root ? `${root === "/" ? "" : root}/${tail}` : `Collections/${tail}`;

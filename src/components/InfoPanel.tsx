@@ -2,6 +2,8 @@ import { createEffect, createResource, createSignal, onCleanup, Show } from "sol
 import { api, baseName, ImageInfo, QualityInfo } from "../lib/api";
 import { badgeLabels } from "../lib/badges";
 import { formatBytes, formatDate, formatExposure } from "../lib/format";
+import { flatFolder } from "../lib/locations";
+import { location } from "../lib/navigation";
 
 function Row(props: { label: string; value?: string | number | null }) {
   return (
@@ -66,6 +68,8 @@ export function InfoPanel(props: { target: { path: string; isDir: boolean } | nu
               {(i) => (
                 <dl>
                   <Row label="Name" value={i().name} />
+                  {/* FLAT-11: names repeat in a flattened tree, so show the folder of the photo. */}
+                  <Row label="Folder" value={flatFolder(location(), i().path)} />
                   <Row label="Path" value={i().path} />
                   <Row label="Size" value={formatBytes(i().size)} />
                   <Row label="Dimensions" value={i().width && i().height ? `${i().width} × ${i().height}` : undefined} />

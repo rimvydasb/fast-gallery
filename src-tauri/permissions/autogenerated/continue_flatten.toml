@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-continue-flatten"
+description = "Enables the continue_flatten command without any pre-configured scope."
+commands.allow = ["continue_flatten"]
+
+[[permission]]
+identifier = "deny-continue-flatten"
+description = "Denies the continue_flatten command without any pre-configured scope."
+commands.deny = ["continue_flatten"]

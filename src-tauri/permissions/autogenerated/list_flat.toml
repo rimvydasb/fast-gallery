@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-flat"
+description = "Enables the list_flat command without any pre-configured scope."
+commands.allow = ["list_flat"]
+
+[[permission]]
+identifier = "deny-list-flat"
+description = "Denies the list_flat command without any pre-configured scope."
+commands.deny = ["list_flat"]

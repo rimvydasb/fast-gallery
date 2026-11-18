@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-cancel-flatten"
+description = "Enables the cancel_flatten command without any pre-configured scope."
+commands.allow = ["cancel_flatten"]
+
+[[permission]]
+identifier = "deny-cancel-flatten"
+description = "Denies the cancel_flatten command without any pre-configured scope."
+commands.deny = ["cancel_flatten"]

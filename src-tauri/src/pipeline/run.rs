@@ -251,7 +251,7 @@ mod tests {
         ctx: &Ctx,
         cap: Option<usize>,
     ) -> serde_json::Value {
-        let w = TreeWalker::new(root, WalkOptions { max_depth: None, max_images: cap });
+        let w = TreeWalker::new(root, WalkOptions { max_images: cap, ..Default::default() });
         let mut cache = AnalysisCache::new(Arc::clone(idx));
         run_pipeline(w, a, Collect::default(), &mut cache, ctx, 3)
     }
@@ -318,7 +318,7 @@ mod tests {
         }
         let pair = || {
             let p = Arc::new(crate::pipeline::Pair(MeanAnalyzer { calls: AtomicUsize::new(0) }, MaxAnalyzer));
-            let w = TreeWalker::new(t.path(), WalkOptions { max_depth: None, max_images: None });
+            let w = TreeWalker::new(t.path(), WalkOptions::default());
             let mut cache = AnalysisCache::new(Arc::clone(&idx));
             run_pipeline(w, p, Outputs(Vec::new()), &mut cache, &Ctx::new(None), 3)
         };

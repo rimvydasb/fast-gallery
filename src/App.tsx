@@ -1,8 +1,8 @@
-import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createSignal, on, onCleanup, onMount, Show } from "solid-js";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { api, CollectionSummary, FolderPreview, FsChange, parentPath, Settings } from "./lib/api";
+import { api, CollectionSummary, FlatStatus, FolderPreview, FsChange, parentPath, Settings } from "./lib/api";
 import {
   applyPreview,
   editMode,
@@ -12,15 +12,23 @@ import {
   infoOpen,
   loadError,
   pendingAnalysis,
+  previewEpoch,
   selectedEntries,
   setEditMode,
+  setHomeDir,
+  setPreviewEpoch,
+  setPreviews,
   setSettings,
   setShowHidden,
+  settings,
   sort,
   viewerIndex,
+  loading,
 } from "./lib/store";
 import { location, navigate, path, reload } from "./lib/navigation";
-import { setCollections } from "./lib/locations";
+import { parseLocation, setCollections } from "./lib/locations";
+import { applyFlatProgress, flat, leaveFlatten, onFlatTreeChanged, setFlat } from "./lib/flatten";
+import { reconcile } from "solid-js/store";
 import { runAction } from "./lib/actions";
 import { initTasks, task } from "./lib/tasks";
 import { onAnalysisDone, startAnalysis } from "./lib/analysis";
@@ -36,7 +44,42 @@ import { DeleteFolderDialog } from "./components/DeleteFolderDialog";
 import { RenameDialog } from "./components/RenameDialog";
 import { ScanCapDialog } from "./components/ScanCapDialog";
 import { Toasts } from "./components/Toasts";
-import { GridView } from "./views/GridView";
+import { FlatBanner, GridView } from "./views/GridView";
+
+/** True if the window shows the flat location of `root`. */
+const onFlat = (root: string | undefined) => {
+  const l = location();
+  return !!root && l?.kind === "flat" && l.path === root;
+};
+
+/** D4: lists the flat location again after `flat-progress`, never 2 listings at once, and never
+ * during a navigation (a reload would cancel it). A missed refresh runs after the navigation. */
+let flatListing = false;
+let flatPending = false;
+async function refreshFlat() {
+  if (loading() || flatListing) {
+    flatPending = true;
+    return;
+  }
+  flatPending = false;
+  if (!onFlat(flat()?.root)) return;
+  flatListing = true;
+  try {
+    await reload();
+  } finally {
+    flatListing = false;
+  }
+  if (flatPending) refreshFlat();
+}
+
+/** IGN-06: a new ignore list. The window lists again, and the folder previews resolve again. */
+async function onIgnoreListChanged() {
+  setPreviews(reconcile({}));
+  // A flat location walks again with the new list (a refresh keeps its listing until it ends).
+  if (location()?.kind === "flat") setFlat(null);
+  await reload();
+  setPreviewEpoch(previewEpoch() + 1);
+}
 import { ViewerView } from "./views/ViewerView";
 
 export function App() {
@@ -54,18 +97,30 @@ export function App() {
       api.listCollections(),
     ]);
     setSettings(s);
+    setHomeDir(home);
     setShowHidden(s.showHidden);
     setCollections(cols);
 
-    // NAV-11: restore the last open folder. PLAT-06: or open the file macOS asked us to open.
+    // NAV-11: restore the last open location. PLAT-06: or open the file macOS asked us to open.
     const q = new URLSearchParams(window.location.search).get("folder");
-    const start = pending ? runAction("nav.openPath", pending) : navigate(q ?? s.lastFolder ?? home, { push: false });
+    const start = pending
+      ? runAction("nav.openPath", pending)
+      : navigate(q ?? parseLocation(s.lastFolder ?? home), { push: false });
     const label = getCurrentWindow().label;
 
     const listeners = await Promise.all([
       setEditMode(false).then(() => () => {}), // EDIT-02
       listen<FolderPreview>("folder-preview-ready", (e) => applyPreview(e.payload)),
-      listen<Settings>("settings-changed", (e) => setSettings(e.payload)),
+      listen<Settings>("settings-changed", (e) => {
+        const before = settings()?.ignoredFolders ?? [];
+        setSettings(e.payload);
+        const after = e.payload.ignoredFolders;
+        if (before.length !== after.length || before.some((p, i) => p !== after[i])) onIgnoreListChanged();
+      }),
+      // D4: the walk of the flat location found more photos, or ended.
+      listen<FlatStatus>("flat-progress", (e) => {
+        if (applyFlatProgress(e.payload)) refreshFlat();
+      }),
       listen("menu-open-folder", () => runAction("nav.openFolderDialog")),
       listen<string>("open-path", (e) => runAction("nav.openPath", e.payload)),
       // The busy state of all windows; the source window opens the scan result (QUAL-12).
@@ -81,6 +136,11 @@ export function App() {
       // FSW-02, FSW-04: update tiles and previews after a file system change.
       listen<FsChange>("fs-changed", (e) => {
         const c = e.payload;
+        // FLAT-14: a change of photos in a flattened tree starts a new walk.
+        if (onFlat(c.dir)) {
+          if (c.photos) onFlatTreeChanged(c.dir);
+          return;
+        }
         if (c.dir !== path()) return;
         if (c.dirChanged) reload();
         const known = new Set(entries().filter((x) => x.d).map(entryPath));
@@ -104,6 +164,21 @@ export function App() {
     await Promise.all([start, shown]);
     if (loadError()?.kind === "notFound" && path() !== home) navigate(home, { push: false });
   });
+
+  // FLAT-07: leaving the flat location stops its walk.
+  createEffect(
+    on(location, (l) => {
+      const s = flat();
+      if (s && !(l?.kind === "flat" && l.path === s.root)) leaveFlatten();
+    }),
+  );
+
+  // A flat refresh that waited for the end of a navigation.
+  createEffect(
+    on(loading, (busy) => {
+      if (!busy && flatPending) refreshFlat();
+    }),
+  );
 
   // A sort or a grouping that reads analysis results starts the analysis of the location by itself,
   // when no other task runs.
@@ -136,6 +211,7 @@ export function App() {
         </Show>
         <main class="main">
           <GridView />
+          <FlatBanner />
         </main>
         <Show when={infoOpen() && viewerIndex() === null}>
           <InfoPanel target={infoTarget()} count={selectedEntries().length} />

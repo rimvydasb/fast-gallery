@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use super::ignore::IgnoreSet;
 use super::index::PreviewIndex;
 use super::{ext_lower, fill_taken, fill_taken_by_path, natural_cmp, read_entries, sort_entries, Entry, ListOptions, SortKey, SortSpec};
 use crate::pipeline::{AnalysisCache, Pair};
@@ -31,6 +32,8 @@ pub enum GroupKey {
     Size,
     /// By file type.
     Type,
+    /// By the folder of the image, relative to the flattened root (FLAT-13).
+    Folder,
     /// By the first flag of the bad photo rules.
     Quality,
     BurstDense,
@@ -100,6 +103,7 @@ struct Item {
 }
 
 /// The entries of 1 folder in the grid order, with groups.
+#[allow(clippy::too_many_arguments)]
 pub fn list_disk(
     dir: &Path,
     sort: SortSpec,
@@ -107,8 +111,10 @@ pub fn list_disk(
     group: GroupKey,
     index: &Arc<PreviewIndex>,
     th: &Thresholds,
+    ignore: &IgnoreSet,
 ) -> std::io::Result<Listing> {
-    let (mut entries, _) = read_entries(dir, &ListOptions { show_hidden, max_entries: usize::MAX, follow_links: true })?;
+    let (mut entries, _) =
+        read_entries(dir, &ListOptions { show_hidden, max_entries: usize::MAX, follow_links: true, ignore })?;
     if Needs::of(sort, group).taken {
         fill_taken(dir, &mut entries, index);
     }
@@ -116,13 +122,34 @@ pub fn list_disk(
     Ok(arrange(Some(dir), entries, sort, group, index, th))
 }
 
-/// The entries of a collection (each with `Entry.p`) in the grid order, with groups.
-pub fn list_paths(mut entries: Vec<Entry>, sort: SortSpec, group: GroupKey, index: &Arc<PreviewIndex>, th: &Thresholds) -> Listing {
+/// The entries of a collection or a flat location (each with `Entry.p`) in the grid order, with
+/// groups. `root`: the flattened folder, for the grouping by folder.
+pub fn list_paths(
+    mut entries: Vec<Entry>,
+    sort: SortSpec,
+    group: GroupKey,
+    index: &Arc<PreviewIndex>,
+    th: &Thresholds,
+    root: Option<&Path>,
+) -> Listing {
     if Needs::of(sort, group).taken {
         fill_taken_by_path(&mut entries, index);
     }
     sort_entries(&mut entries, sort);
-    arrange(None, entries, sort, group, index, th)
+    arrange(root, entries, sort, group, index, th)
+}
+
+/// The folder of an image for the grouping by folder: relative to `root`, and the name of `root`
+/// for the images directly in it (FLAT-11, FLAT-13).
+pub fn folder_label(path: &Path, root: Option<&Path>) -> String {
+    let parent = path.parent().unwrap_or(path);
+    match root.and_then(|r| parent.strip_prefix(r).ok().map(|rel| (r, rel))) {
+        Some((r, rel)) if rel.as_os_str().is_empty() => {
+            r.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| r.to_string_lossy().into_owned())
+        }
+        Some((_, rel)) => rel.to_string_lossy().into_owned(),
+        None => parent.to_string_lossy().into_owned(),
+    }
 }
 
 /// Applies the analysis sorts and the grouping to entries that `sort_entries` has sorted.
@@ -198,6 +225,25 @@ pub fn arrange(
             let label = type_label(&it.e.n);
             ((0, label.clone()), label, None)
         }),
+        GroupKey::Folder => {
+            // The folders in natural order, the root first; the order does not follow the sort.
+            let path_of = |it: &Item| it.e.p.as_ref().map(PathBuf::from).unwrap_or_else(|| dir.unwrap_or(Path::new("/")).join(&it.e.n));
+            let rel = |it: &Item| {
+                let p = path_of(it);
+                let parent = p.parent().unwrap_or(&p).to_path_buf();
+                dir.and_then(|d| parent.strip_prefix(d).ok().map(|r| r.to_string_lossy().into_owned()))
+                    .unwrap_or_else(|| parent.to_string_lossy().into_owned())
+            };
+            let mut folders: Vec<String> = items.iter().map(rel).collect();
+            folders.sort_by(|a, b| natural_cmp(a, b));
+            folders.dedup();
+            let rank: std::collections::HashMap<String, i64> =
+                folders.into_iter().enumerate().map(|(i, f)| (f, i as i64)).collect();
+            keyed(&mut items, false, |it| {
+                let r = rank.get(&rel(it)).copied().unwrap_or(0);
+                ((r, String::new()), folder_label(&path_of(it), dir), None)
+            })
+        }
         GroupKey::Quality => keyed(&mut items, false, |it| match &it.q {
             None => ((99, String::new()), "Not analyzed".to_string(), Some("missing")),
             Some((m, s)) => {
@@ -425,6 +471,17 @@ mod tests {
         assert_eq!(l.groups[0].kind, Some("date"));
         let l = arrange(None, mk(), SortSpec { key: SortKey::Name, desc: true }, GroupKey::Taken, &idx(), &Thresholds::default());
         assert_eq!(labels(&l), [("1970-01-06", 1), ("1970-01-04", 2)]);
+    }
+
+    #[test]
+    fn groups_by_relative_folder_in_natural_order() {
+        let p = |s: &str| Entry { n: s.rsplit('/').next().unwrap().into(), p: Some(s.into()), ..img("", 1, 0) };
+        let e = vec![p("/r/DCIM/101CANON/IMG_1.JPG"), p("/r/top.jpg"), p("/r/DCIM/100CANON/IMG_1.JPG"), p("/r/DCIM/9/x.jpg")];
+        let l = arrange(Some(Path::new("/r")), e, SortSpec { key: SortKey::Name, desc: true }, GroupKey::Folder, &idx(), &Thresholds::default());
+        assert_eq!(labels(&l), [("r", 1), ("DCIM/9", 1), ("DCIM/100CANON", 1), ("DCIM/101CANON", 1)]);
+        assert_eq!(folder_label(Path::new("/r/a/b.jpg"), Some(Path::new("/r"))), "a");
+        assert_eq!(folder_label(Path::new("/r/b.jpg"), Some(Path::new("/r"))), "r");
+        assert_eq!(folder_label(Path::new("/x/b.jpg"), None), "/x");
     }
 
     #[test]

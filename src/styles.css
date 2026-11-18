@@ -684,6 +684,46 @@ input {
   font-size: 14px;
 }
 
+.ignored-state .error-icon {
+  margin-bottom: 4px;
+}
+
+/* FLAT-09: the cap banner floats over the bottom of the grid. */
+.flat-banner {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px 6px 14px;
+  border-radius: 10px;
+  background: var(--bg-elev);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.status-btn {
+  margin-left: 8px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.status-btn:hover {
+  background: var(--hover);
+}
+
 .error-state .hint {
   font-size: 12px;
   color: var(--fg-faint);
@@ -1128,6 +1168,51 @@ input {
 .field > select {
   justify-self: start;
   min-width: 140px;
+}
+
+/* IGN-01: the ignored folders list of Settings. */
+.ignored-hint {
+  margin-bottom: 6px !important;
+}
+
+.ignored-list {
+  height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  font-size: 12px;
+  outline: none;
+}
+
+.ignored-list:focus-visible {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.ignored-item {
+  padding: 3px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+.ignored-item.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+.ignored-empty {
+  padding: 8px;
+  color: var(--fg-faint);
+}
+
+.ignored-buttons {
+  margin-top: 8px;
+}
+
+.ignored-buttons .tb-spacer {
+  flex: 1;
 }
 
 /* ---------- Confirmation dialog ---------- */

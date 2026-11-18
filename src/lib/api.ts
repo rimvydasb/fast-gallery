@@ -11,6 +11,7 @@ export type GroupKey =
   | "created"
   | "size"
   | "type"
+  | "folder"
   | "quality"
   | "burstDense"
   | "burstSparse"
@@ -94,6 +95,31 @@ export interface Settings {
   folderPrefs: Record<string, FolderPrefs>;
   qualitySensitivity: QualitySensitivity;
   scanCap: number;
+  /** Folders that the app never shows (IGN-02): absolute paths or paths that start with "~/". */
+  ignoredFolders: string[];
+  /** The photos after which a flatten stops, and the step of "Show More" (FLAT-08). */
+  flattenCap: number;
+}
+
+/** A settings change. `null` restores the default value of a key ("Restore Defaults"). */
+export type SettingsPatch = { [K in keyof Settings]?: Settings[K] | null };
+
+/** The state of the flatten of a window (FLAT-06, FLAT-09). */
+export interface FlatStatus {
+  /** Session id from `start_flatten`. */
+  id: string;
+  /** Absolute path of the flattened folder. */
+  root: string;
+  /** Photos found so far. */
+  count: number;
+  /** The walk finished the whole tree. */
+  done: boolean;
+  /** The walk stopped at the cap and the tree has more photos. */
+  capped: boolean;
+  /** The user or a location change stopped the walk. */
+  cancelled: boolean;
+  /** A new walk after a file change runs; the grid keeps the last result until it ends (FLAT-14). */
+  refreshing: boolean;
 }
 
 export type QualitySensitivity = "low" | "medium" | "high";
@@ -153,7 +179,7 @@ export interface QualityInfo {
 }
 
 export interface CmdError {
-  kind: "permission" | "notFound" | "notDir" | "editOff" | "busy" | "locked" | "other";
+  kind: "permission" | "notFound" | "notDir" | "editOff" | "busy" | "locked" | "ignored" | "other";
   message: string;
 }
 
@@ -180,6 +206,8 @@ export interface FsChange {
   dirChanged: boolean;
   folders: string[];
   files: string[];
+  /** An image file or a folder in the tree changed (not hidden, not ignored). */
+  photos: boolean;
 }
 
 export interface TrashResult {
@@ -215,7 +243,7 @@ export const api = {
   listVolumes: () => invoke<{ name: string; path: string }[]>("list_volumes"),
   pathKind: (path: string) => invoke<"dir" | "file" | "missing">("path_kind", { path }),
   getSettings: () => invoke<Settings>("get_settings"),
-  updateSettings: (patch: Partial<Settings>) => invoke<Settings>("update_settings", { patch }),
+  updateSettings: (patch: SettingsPatch) => invoke<Settings>("update_settings", { patch }),
   getCacheInfo: () => invoke<{ used: number; limit: number; path: string }>("get_cache_info"),
   clearCache: () => invoke<void>("clear_cache"),
   setEditMode: (on: boolean) => invoke<boolean>("set_edit_mode", { on }),
@@ -230,7 +258,8 @@ export const api = {
   startDrag: (paths: string[]) => invoke<void>("start_drag", { paths }),
   pickFolder: () => invoke<string | null>("pick_folder"),
   newWindow: () => invoke<void>("new_window"),
-  openSettings: () => invoke<void>("open_settings"),
+  /** `section`: scroll Settings to a section, for example "ignored" (IGN-09). */
+  openSettings: (section?: string) => invoke<void>("open_settings", { section: section ?? null }),
   takePendingOpen: () => invoke<string | null>("take_pending_open"),
   toggleFavorite: (path: string) => invoke<Settings>("toggle_favorite", { path }),
   setFolderPrefs: (path: string, prefs: FolderPrefs) => invoke<void>("set_folder_prefs", { path, prefs }),
@@ -246,7 +275,27 @@ export const api = {
     invoke<TaskStatus>("start_analyze_photos", { location, need, showHidden }),
   removeCollection: (id: string) => invoke<void>("remove_collection", { id }),
   getQuality: (path: string) => invoke<QualityInfo | null>("get_quality", { path }),
+  startFlatten: (root: string) => invoke<FlatStatus>("start_flatten", { root }),
+  listFlat: (id: string, sort: SortSpec, group: GroupKey = "none") => invoke<DirListing>("list_flat", { id, sort, group }),
+  continueFlatten: (id: string) => invoke<FlatStatus>("continue_flatten", { id }),
+  cancelFlatten: (id: string) => invoke<FlatStatus>("cancel_flatten", { id }),
 };
+
+/** True if `p` or a folder that contains it is in the ignored list (D6). Compares without case and
+ * without a trailing "/" (IGN-04); "~/" is the home folder (IGN-02). */
+export function isIgnoredPath(p: string, ignored: readonly string[], home: string): boolean {
+  if (ignored.length === 0) return false;
+  const norm = (x: string) => (x.length > 1 ? x.replace(/\/+$/, "") : x).toLowerCase();
+  const h = home.replace(/\/+$/, "");
+  const set = new Set(ignored.map((x) => norm(x === "~" ? h : x.startsWith("~/") ? h + x.slice(1) : x)));
+  let cur = norm(p);
+  for (;;) {
+    if (set.has(cur)) return true;
+    if (cur === "/" || cur === "") return false;
+    const i = cur.lastIndexOf("/");
+    cur = i <= 0 ? "/" : cur.slice(0, i);
+  }
+}
 
 /** thumb:// URL. The mtime in the URL makes a changed file get a new URL. */
 export function thumbUrl(path: string, size: 256 | 512, mtime: number): string {

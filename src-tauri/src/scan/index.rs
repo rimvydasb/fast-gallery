@@ -99,6 +99,13 @@ impl PreviewIndex {
         n
     }
 
+    /// IGN-06: drops all folder previews, for example after a change of the ignored folders. The
+    /// date taken and analysis rows stay valid.
+    pub fn clear_previews(&self) {
+        let conn = self.conn.lock();
+        let _ = conn.execute_batch("DELETE FROM previews;");
+    }
+
     pub fn clear(&self) {
         let conn = self.conn.lock();
         let _ = conn.execute_batch("DELETE FROM previews; DELETE FROM taken; DELETE FROM analysis;");
